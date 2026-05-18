@@ -1,11 +1,34 @@
 use anyhow::Result;
-use crate::utils::{eval_nix_field, eval_nix_derivation_field, eval_config_field, resolve_album_path, expand_path, get_nix32_truncate, sanitize_source_name};
+use crate::utils::{eval_nix_field, eval_nix_derivation_field, eval_config_field, resolve_album_path, expand_path, get_nix32_truncate, sanitize_source_name, ground_logical_path};
 use crate::config::AppConfig;
 use lava_torrent::torrent::v1::Torrent;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::collections::HashMap;
+
+fn sync_env(store_path: &Path) -> Result<()> {
+    let flake_uri = crate::utils::get_munix_flake_uri();
+    let gc_roots_profiles = store_path.join("gcroots").join("profiles");
+    fs::create_dir_all(&gc_roots_profiles)?;
+    let active_env_link = gc_roots_profiles.join("env");
+
+    log::info!("Syncing toolchain environment GC root...");
+    let mut cmd = Command::new("nix");
+    cmd.arg("build")
+        .arg("--store")
+        .arg(store_path)
+        .arg("--impure")
+        .arg(format!("{flake_uri}#env"))
+        .arg("--out-link")
+        .arg(&active_env_link);
+
+    let status = cmd.status()?;
+    if !status.success() {
+        anyhow::bail!("Nix build failed for env toolchain sync");
+    }
+    Ok(())
+}
 
 pub fn run(path: &str, source_type: Option<&str>) -> Result<()> {
     log::debug!("Starting munix build for path: {}", path);
@@ -71,43 +94,72 @@ pub fn run(path: &str, source_type: Option<&str>) -> Result<()> {
     let sanitized = sanitize_source_name(&internal_torrent_name);
     let link_name = format!("{sanitized}-{truncated}");
 
+    let gc_roots_source = store_path.join("gcroots").join("source");
+    let source_link = gc_roots_source.join(&link_name);
+    
+    let mut is_source_in_store = false;
+    let mut store_origin_path = String::new();
+
+    if fs::symlink_metadata(&source_link).is_ok()
+        && let Ok(logical_target) = fs::read_link(&source_link)
+    {
+        let logical_str = logical_target.to_string_lossy().to_string();
+        if logical_str.starts_with("/nix/store/") {
+            let physical_target = store_path.join(logical_str.trim_start_matches('/'));
+            if physical_target.exists() {
+                is_source_in_store = true;
+                store_origin_path = physical_target.to_string_lossy().to_string();
+            }
+        }
+    }
+
     let mut envs = HashMap::new();
-    let actual_origin_path = if source_type == Some("torrent") {
+    let actual_origin_path_str = if is_source_in_store {
+        log::debug!("Resolved origin path via GC root (physical): {}", store_origin_path);
+        store_origin_path
+    } else if source_type == Some("torrent") {
         let p = origin_base_path.join("torrent").join(&link_name);
         log::debug!("Resolved origin path via base + torrent/ + link_name: {}", p.display());
-        p
+        p.to_string_lossy().to_string()
     } else {
         let origin_path_nix = eval_nix_field(&target_path, "origin.path", None, Some(&store_path))?;
         if !origin_path_nix.is_empty() {
             log::debug!("Using explicit origin.path: {}", origin_path_nix);
-            PathBuf::from(origin_path_nix)
+            PathBuf::from(origin_path_nix).to_string_lossy().to_string()
         } else {
-            origin_base_path.join(&album_name)
+            origin_base_path.join(&album_name).to_string_lossy().to_string()
         }
     };
 
-    envs.insert("MUNIX_ORIGIN_PATH".to_string(), actual_origin_path.to_string_lossy().to_string());
+    envs.insert("MUNIX_ORIGIN_PATH".to_string(), actual_origin_path_str.clone());
     log::debug!("Mapping MUNIX_SOURCE_NAME: {}", internal_torrent_name);
     envs.insert("MUNIX_SOURCE_NAME".to_string(), internal_torrent_name);
+    envs.insert("MUNIX_SANITIZED_SOURCE_NAME".to_string(), sanitized.clone());
 
     if source_type == Some("torrent") {
-        let verify_cmd = eval_config_field(&target_path, "commands.torrent.verify", Some(&envs), Some(&store_path))?;
-        if !verify_cmd.is_empty() {
-            log::info!("Executing torrent verification command");
-            log::debug!("Verify command: {}", verify_cmd);
-            let status = Command::new("sh").envs(&envs).arg("-c").arg(&verify_cmd).status()?;
-            if !status.success() {
-                anyhow::bail!("Torrent verification failed. Logic returned non-zero exit code.");
-            }
-        }
-
-        if actual_origin_path.exists() {
-            let actual_origin_hash = crate::utils::get_path_hash(&actual_origin_path, Some(&store_path))?;
-            let origin_hash = eval_nix_field(&target_path, "origin.hash", None, Some(&store_path))?;
-            log::debug!("Comparing NAR hashes for origin content");
-            crate::utils::check_hash(&actual_origin_hash, &origin_hash, "origin.hash")?;
+        if is_source_in_store {
+            log::info!("Found pinned source in store. Skipping verification...");
         } else {
-            anyhow::bail!("Origin path does not exist: {}", actual_origin_path.display());
+            let verify_cmd_raw = eval_config_field(&target_path, "commands.torrent.verify", Some(&envs), Some(&store_path))?;
+            if !verify_cmd_raw.is_empty() {
+                let verify_cmd = ground_logical_path(verify_cmd_raw, &store_path);
+                log::info!("Executing torrent verification command");
+                log::debug!("Verify command: {}", verify_cmd);
+                let status = Command::new("sh").envs(&envs).arg("-c").arg(&verify_cmd).status()?;
+                if !status.success() {
+                    anyhow::bail!("Torrent verification failed. Logic returned non-zero exit code.");
+                }
+            }
+
+            let physical_origin = PathBuf::from(&actual_origin_path_str);
+            if physical_origin.exists() {
+                let actual_origin_hash = crate::utils::get_path_hash(&physical_origin, Some(&store_path))?;
+                let origin_hash = eval_nix_field(&target_path, "origin.hash", None, Some(&store_path))?;
+                log::debug!("Comparing NAR hashes for origin content");
+                crate::utils::check_hash(&actual_origin_hash, &origin_hash, "origin.hash")?;
+            } else {
+                anyhow::bail!("Origin path does not exist: {}", physical_origin.display());
+            }
         }
     }
 
@@ -161,7 +213,7 @@ pub fn run(path: &str, source_type: Option<&str>) -> Result<()> {
     
     materialize_output(&physical_store_path, target_dir, &store_path)?;
 
-    if let Ok(src_store_path) = eval_nix_derivation_field(&target_path, "sourceStorePath", Some(&envs), Some(&store_path)) {
+    if let Ok(src_logical_path) = eval_nix_derivation_field(&target_path, "sourceStorePath", Some(&envs), Some(&store_path)) {
         log::info!("Pinning source logical GC root...");
         let gc_roots_source = store_path.join("gcroots").join("source");
         fs::create_dir_all(&gc_roots_source)?;
@@ -171,42 +223,22 @@ pub fn run(path: &str, source_type: Option<&str>) -> Result<()> {
             let _ = fs::remove_file(&source_link);
         }
 
-        if let Err(e) = std::os::unix::fs::symlink(&src_store_path, &source_link) {
+        if let Err(e) = std::os::unix::fs::symlink(&src_logical_path, &source_link) {
             log::warn!("Failed to create source GC root link: {}", e);
         }
 
-        envs.insert("MUNIX_ORIGIN_PATH".to_string(), src_store_path);
-        let seed_cmd = eval_config_field(&target_path, "commands.torrent.seed", Some(&envs), Some(&store_path)).unwrap_or_default();
-        if !seed_cmd.is_empty() {
+        envs.insert("MUNIX_ORIGIN_PATH".to_string(), src_logical_path);
+        
+        let seed_cmd_raw = eval_config_field(&target_path, "commands.torrent.seed", Some(&envs), Some(&store_path)).unwrap_or_default();
+        if !seed_cmd_raw.is_empty() {
+            let seed_cmd = ground_logical_path(seed_cmd_raw, &store_path);
             log::info!("Executing seed lifecycle command");
+            log::debug!("Seed command: {}", seed_cmd);
             let _ = Command::new("sh").envs(&envs).arg("-c").arg(&seed_cmd).status();
         }
     }
 
     log::info!("Build completed successfully.");
-    Ok(())
-}
-
-fn sync_env(store_path: &Path) -> Result<()> {
-    let flake_uri = crate::utils::get_munix_flake_uri();
-    let gc_roots_profiles = store_path.join("gcroots").join("profiles");
-    fs::create_dir_all(&gc_roots_profiles)?;
-    let active_env_link = gc_roots_profiles.join("env");
-
-    log::info!("Syncing toolchain environment GC root...");
-    let mut cmd = Command::new("nix");
-    cmd.arg("build")
-        .arg("--store")
-        .arg(store_path)
-        .arg("--impure")
-        .arg(format!("{flake_uri}#env"))
-        .arg("--out-link")
-        .arg(&active_env_link);
-
-    let status = cmd.status()?;
-    if !status.success() {
-        anyhow::bail!("Nix build failed for env toolchain sync");
-    }
     Ok(())
 }
 

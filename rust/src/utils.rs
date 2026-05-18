@@ -84,6 +84,14 @@ pub fn sanitize_source_name(name: &str) -> String {
         .join("-")
 }
 
+pub fn ground_logical_path(input: String, store_path: &Path) -> String {
+    let logical_prefix = "/nix/store/";
+    let mut physical_prefix = store_path.to_path_buf();
+    physical_prefix.push("nix/store/");
+    let physical_prefix_str = physical_prefix.to_string_lossy().to_string();
+    input.replace(logical_prefix, &physical_prefix_str)
+}
+
 pub fn eval_nix_field(path: &Path, field_path: &str, envs: Option<&HashMap<String, String>>, store: Option<&Path>) -> Result<String> {
     let path_str = path.to_string_lossy();
     let expr = format!(

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use crate::utils::{eval_config_field, eval_nix_field, resolve_album_path};
+use crate::utils::{eval_config_field, eval_nix_field, resolve_album_path, ground_logical_path};
 use crate::config::AppConfig;
 use std::collections::HashMap;
 use std::process::Command;
@@ -35,9 +35,19 @@ pub fn run(source: &str, path: &str) -> Result<()> {
         envs.insert("MUNIX_ORIGIN_PATH".to_string(), expanded);
     }
 
-    let fallback_name = eval_nix_field(&album_path, "name", None, Some(&store_path)).unwrap_or_default();
+    let mut fallback_name = eval_nix_field(&album_path, "name", None, Some(&store_path)).unwrap_or_default();
+    if source == "torrent" {
+        let t_name = eval_nix_field(&album_path, "source.torrent.name", None, Some(&store_path))?;
+        if !t_name.is_empty() {
+            fallback_name = t_name;
+        }
+    }
+    
     log::debug!("Using fallback source name: {}", fallback_name);
-    envs.insert("MUNIX_SOURCE_NAME".to_string(), fallback_name);
+    envs.insert("MUNIX_SOURCE_NAME".to_string(), fallback_name.clone());
+    
+    let sanitized = crate::utils::sanitize_source_name(&fallback_name);
+    envs.insert("MUNIX_SANITIZED_SOURCE_NAME".to_string(), sanitized);
 
     let cmd_field = match source {
         "torrent" => "commands.torrent.fetch",
@@ -45,12 +55,13 @@ pub fn run(source: &str, path: &str) -> Result<()> {
         _ => anyhow::bail!("Unknown source: '{}'. Expected 'torrent' or 'web'.", source),
     };
 
-    let final_cmd = eval_config_field(&album_path, cmd_field, Some(&envs), Some(&store_path))?;
+    let final_cmd_raw = eval_config_field(&album_path, cmd_field, Some(&envs), Some(&store_path))?;
 
-    if final_cmd.is_empty() {
+    if final_cmd_raw.is_empty() {
         anyhow::bail!("Command '{}' is missing or empty in config.nix", cmd_field);
     }
 
+    let final_cmd = ground_logical_path(final_cmd_raw, &store_path);
     log::debug!("Final resolved fetch command: {}", final_cmd);
 
     log::info!("Executing fetch command...");
