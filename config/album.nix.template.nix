@@ -34,9 +34,12 @@ let
     "      albumartist = ${toNixVal (get "album.metadata.albumartist" "")};\n" +
     "      album = ${toNixVal (get "album.metadata.album" "")};\n" +
     "      date = ${toNixVal (get "album.metadata.date" "")};\n" +
+    "\n" +
     "      genre = ${toNixVal (get "album.metadata.genre" [])};\n" +
     "      styles = ${toNixVal (get "album.metadata.styles" [])};\n" +
+    "\n" +
     "      original_date = ${toNixVal (get "album.metadata.original_date" "")};\n" +
+    "\n" +
     "      country = ${toNixVal (get "album.metadata.country" "")};\n" +
     "      label = ${toNixVal (get "album.metadata.label" "")};\n" +
     "      catalognumber = ${toNixVal (get "album.metadata.catalognumber" "")};\n" +

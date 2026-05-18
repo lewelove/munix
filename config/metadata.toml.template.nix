@@ -19,8 +19,8 @@ let
   renderAlbum = 
     "[album]\n" +
     "\n" +
-    "albumartist  =  ${toTomlVal (get "album.metadata.albumartist" "")}\n" +
-    "album        =  ${toTomlVal (get "album.metadata.album" "")}\n" +
+    "albumartist = ${toTomlVal (get "album.metadata.albumartist" "")}\n" +
+    "album = ${toTomlVal (get "album.metadata.album" "")}\n" +
     "date = ${toTomlVal (get "album.metadata.date" "")}\n" +
     "\n" +
     "genre = ${toTomlVal (get "album.metadata.genre" [])}\n" +
