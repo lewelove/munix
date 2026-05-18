@@ -15,7 +15,7 @@ munix.mkAlbum {
     hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
   };
 
-  fetch = {
+  source = {
     torrent = {
       # path to .torrent file
       file = ./Info/source.torrent;
