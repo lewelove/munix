@@ -1,3 +1,79 @@
-fn main() {
-    println!("Hello, world!");
+use clap::{Parser, Subcommand};
+use anyhow::Result;
+
+mod build;
+mod fetch;
+mod manifest;
+mod config;
+mod utils;
+
+#[derive(Parser)]
+#[command(name = "munix", version = "0.1.0")]
+struct Cli {
+    #[arg(global = true, long)]
+    debug: bool,
+
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    Build {
+        #[arg(default_value = ".")]
+        path: String,
+        #[arg(long)]
+        source: Option<String>,
+    },
+    Manifest {
+        #[arg(default_value = ".")]
+        path: String,
+        #[arg(long, default_value = "flac,mp3,wav")]
+        tracks: String,
+    },
+    Fetch {
+        #[arg(long)]
+        source: String,
+        #[arg(default_value = ".")]
+        path: String,
+    },
+}
+
+fn main() -> Result<()> {
+    let cli = Cli::parse();
+
+    let log_level = if cli.debug {
+        log::LevelFilter::Debug
+    } else {
+        log::LevelFilter::Info
+    };
+
+    simple_logger::SimpleLogger::new()
+        .with_level(log_level)
+        .env()
+        .init()
+        .unwrap();
+
+    match cli.command {
+        Commands::Build { path, source } => {
+            if let Err(e) = build::run(&path, source.as_deref()) {
+                log::error!("{}", e);
+                std::process::exit(1);
+            }
+        }
+        Commands::Manifest { path, tracks } => {
+            if let Err(e) = manifest::run(&path, &tracks) {
+                log::error!("{}", e);
+                std::process::exit(1);
+            }
+        }
+        Commands::Fetch { source, path } => {
+            if let Err(e) = fetch::run(&source, &path) {
+                log::error!("{}", e);
+                std::process::exit(1);
+            }
+        }
+    }
+
+    Ok(())
 }
