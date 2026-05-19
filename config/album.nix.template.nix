@@ -77,9 +77,9 @@ let
 
 in
 ''
-{ munix }:
+{ muet }:
 
-munix.mkAlbum {
+muet.mkAlbum {
 
   name = "${data.name or ""}";
 

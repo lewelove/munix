@@ -839,6 +839,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 
 [[package]]
+name = "libmuet"
+version = "0.1.0"
+dependencies = [
+ "alphanumeric-sort",
+ "anyhow",
+ "base64",
+ "dirs",
+ "dotenvy",
+ "globset",
+ "lava_torrent",
+ "log",
+ "metaflac",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha1",
+ "toml",
+ "walkdir",
+]
+
+[[package]]
 name = "libredox"
 version = "0.1.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -899,27 +921,29 @@ dependencies = [
 ]
 
 [[package]]
-name = "munix"
+name = "muet"
 version = "0.1.0"
 dependencies = [
  "alphanumeric-sort",
  "anyhow",
- "base64",
  "clap",
- "dirs",
- "dotenvy",
- "globset",
  "lava_torrent",
+ "libmuet",
  "log",
- "metaflac",
- "regex",
- "reqwest",
- "serde",
  "serde_json",
- "sha1",
  "simple_logger",
  "toml",
- "walkdir",
+]
+
+[[package]]
+name = "muex"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "libmuet",
+ "log",
+ "simple_logger",
 ]
 
 [[package]]

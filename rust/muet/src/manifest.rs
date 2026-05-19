@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::fs;
 use serde_json::{json, Value};
-use crate::config::AppConfig;
+use libmuet::config::AppConfig;
 
 pub fn run(path_str: &str, tracks_filter: &str, torrent_path: Option<&str>, metadata_path: Option<&str>, intermediary: bool) -> Result<()> {
     let target_dir = Path::new(path_str).canonicalize().unwrap_or_else(|_| PathBuf::from(path_str));
@@ -12,7 +12,7 @@ pub fn run(path_str: &str, tracks_filter: &str, torrent_path: Option<&str>, meta
     let album_nix_path = target_dir.join("album.nix");
     let mut origin_hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_string();
     if album_nix_path.exists()
-        && let Ok(h) = crate::utils::eval_nix_field(&album_nix_path, "origin.hash", None, None)
+        && let Ok(h) = libmuet::utils::eval_nix_field(&album_nix_path, "origin.hash", None, None)
         && !h.is_empty()
     {
         origin_hash = h;
@@ -37,11 +37,11 @@ pub fn run(path_str: &str, tracks_filter: &str, torrent_path: Option<&str>, meta
         anyhow::bail!("Torrent file not found");
     }
 
-    let torrent_hash = crate::utils::get_file_hash(&t_path, None).unwrap_or_default();
+    let torrent_hash = libmuet::utils::get_file_hash(&t_path, None).unwrap_or_default();
     let torrent = Torrent::read_from_file(&t_path).map_err(|_| anyhow::anyhow!("Torrent parse error"))?;
 
     let rel_t_path = t_path.canonicalize().unwrap_or(t_path.clone())
-        .strip_prefix(&target_dir).map(|p| p.to_path_buf()).unwrap_or(t_path.clone());
+        .strip_prefix(&target_dir).map(std::path::Path::to_path_buf).unwrap_or(t_path.clone());
 
     let mut cover_file = "cover.png".to_string();
     let mut cover_hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_string();
@@ -49,17 +49,17 @@ pub fn run(path_str: &str, tracks_filter: &str, torrent_path: Option<&str>, meta
     let p_png = target_dir.join("cover.png");
     let p_jpg = target_dir.join("cover.jpg");
     if p_png.exists() {
-        if let Ok(h) = crate::utils::get_file_hash(&p_png, None) {
+        if let Ok(h) = libmuet::utils::get_file_hash(&p_png, None) {
             cover_hash = h;
         }
     } else if p_jpg.exists() {
         cover_file = "cover.jpg".to_string();
-        if let Ok(h) = crate::utils::get_file_hash(&p_jpg, None) {
+        if let Ok(h) = libmuet::utils::get_file_hash(&p_jpg, None) {
             cover_hash = h;
         }
     }
 
-    let globset = crate::utils::build_globset(tracks_filter)?;
+    let globset = libmuet::utils::build_globset(tracks_filter)?;
 
     let mut valid_paths = Vec::new();
     if let Some(files) = &torrent.files {
@@ -97,7 +97,7 @@ pub fn run(path_str: &str, tracks_filter: &str, torrent_path: Option<&str>, meta
 
     if let Some(m_path) = metadata_path {
         if m_path.starts_with("http") {
-            let remote_data = crate::remote::fetch_musicbrainz_data(m_path)?;
+            let remote_data = libmuet::remote::fetch_musicbrainz_data(m_path)?;
             apply_remote_metadata(&mut data, remote_data);
         } else {
             let p = Path::new(m_path);
@@ -114,10 +114,10 @@ pub fn run(path_str: &str, tracks_filter: &str, torrent_path: Option<&str>, meta
     if album_nix_path.exists() {
         let config = AppConfig::load();
         let store_path = config.get_store_path();
-        let origin_base_path = crate::utils::expand_path(config.origin.as_deref().unwrap_or("."));
+        let origin_base_path = libmuet::utils::expand_path(config.origin.as_deref().unwrap_or("."));
         let source_type = data["source"]["type"].as_str();
 
-        if let Ok(res) = crate::utils::resolve_source_origin(&album_nix_path, source_type, &store_path, &origin_base_path) {
+        if let Ok(res) = libmuet::utils::resolve_source_origin(&album_nix_path, source_type, &store_path, &origin_base_path) {
             let resolved_origin = PathBuf::from(res.origin_path);
             if resolved_origin.exists() {
                 origin_folder = Some(resolved_origin);
@@ -126,7 +126,7 @@ pub fn run(path_str: &str, tracks_filter: &str, torrent_path: Option<&str>, meta
     }
 
     data["album"]["url"]["ctdbtocid"] = if let Some(folder) = origin_folder
-        && let Some(ctdb) = crate::utils::resolve_ctdbtocid(&folder, Some(tracks_filter))
+        && let Some(ctdb) = libmuet::utils::resolve_ctdbtocid(&folder, Some(tracks_filter))
     {
         json!(format!("https://db.cuetools.net/ui/?tocid={ctdb}"))
     } else {
@@ -170,11 +170,11 @@ pub fn run(path_str: &str, tracks_filter: &str, torrent_path: Option<&str>, meta
     }
 
     let json_str = serde_json::to_string(&data)?;
-    let temp_path = target_dir.join(".munix-tmp.json");
+    let temp_path = target_dir.join(".muet-tmp.json");
     fs::write(&temp_path, &json_str)?;
     
     let temp_path_str = temp_path.to_string_lossy();
-    let flake_uri = crate::utils::get_munix_flake_uri();
+    let flake_uri = libmuet::utils::get_muet_flake_uri();
     let expr = format!("(builtins.getFlake \"{flake_uri}\").lib.albumNixTemplate {{ data = builtins.fromJSON (builtins.readFile (/. + \"{temp_path_str}\")); }}");
     
     let output = Command::new("nix").args(["eval", "--raw", "--impure", "--expr", &expr]).output();

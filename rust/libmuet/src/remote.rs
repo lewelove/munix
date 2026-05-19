@@ -22,7 +22,7 @@ pub fn fetch_musicbrainz_data(url: &str) -> Result<Value> {
     let is_rg = mode == "release-group";
 
     let cache_dir = dirs::home_dir()
-        .map(|h| h.join(".cache/munix").join(mode))
+        .map(|h| h.join(".cache/muet").join(mode))
         .context("Could not resolve cache directory")?;
     fs::create_dir_all(&cache_dir)?;
 
@@ -33,7 +33,7 @@ pub fn fetch_musicbrainz_data(url: &str) -> Result<Value> {
     }
 
     let client = reqwest::blocking::Client::builder()
-        .user_agent("Munix/0.1.0 ( https://github.com/lewelove/munix )")
+        .user_agent("Muet/0.1.0 ( https://github.com/lewelove/muet )")
         .build()?;
 
     let mut data = json!({ "_is_rg": is_rg });
@@ -57,7 +57,7 @@ pub fn fetch_musicbrainz_data(url: &str) -> Result<Value> {
 
         let mut discogs_info = fetch_discogs_data(&client, &release);
         
-        if discogs_info.get("urls").and_then(|u| u.as_object()).is_none_or(|m| m.is_empty())
+        if discogs_info.get("urls").and_then(|u| u.as_object()).is_none_or(serde_json::Map::is_empty)
             && let Some(rg_obj) = &rg
         {
             discogs_info = fetch_discogs_data(&client, rg_obj);
@@ -106,7 +106,7 @@ fn fetch_discogs_data(client: &reqwest::blocking::Client, mb_obj: &Value) -> Val
             && let Ok(rel_data) = resp.json::<Value>()
         {
             result["release"] = rel_data.clone();
-            if let Some(m_id) = rel_data.get("master_id").and_then(|id| id.as_i64()) {
+            if let Some(m_id) = rel_data.get("master_id").and_then(serde_json::Value::as_i64) {
                 urls["master"] = json!(format!("https://discogs.com/master/{m_id}"));
                 if let Ok(m_resp) = client.get(format!("https://api.discogs.com/masters/{m_id}")).header("Authorization", auth).send()
                     && let Ok(m_data) = m_resp.json::<Value>()

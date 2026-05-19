@@ -1,8 +1,8 @@
 # this file is the documentation of album.nix attributes
 
-{ munix }:
+{ muet }:
 
-munix.mkAlbum {
+muet.mkAlbum {
 
   # album name in "{albumartist}-{album} -> lowercase -> sanitize with `-`" format
   name = "";

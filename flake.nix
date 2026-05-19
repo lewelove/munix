@@ -1,5 +1,5 @@
 {
-  description = "Munix Development Environment";
+  description = "Muet Development Environment";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -18,25 +18,42 @@
             ROOT=$(git rev-parse --show-toplevel)
             cd "$ROOT/rust"
             
-            cargo clippy -- -D warnings
+            cargo clippy --workspace -- -D warnings
 
             if [ "''${1:-}" = "--release" ]; then
-              cargo build --release
+              cargo build --release --workspace
             else
-              cargo build "$@"
+              cargo build --workspace "$@"
             fi
           '';
         };
 
-        munix-bin = pkgs.writeShellApplication {
-          name = "munix";
+        muet-bin = pkgs.writeShellApplication {
+          name = "muet";
           runtimeInputs = [ pkgs.git ];
           text = ''
             ROOT=$(git rev-parse --show-toplevel)
-            BIN="$ROOT/rust/target/release/munix"
+            BIN="$ROOT/rust/target/release/muet"
             
             if [ ! -f "$BIN" ]; then
-              echo "Error: munix binary not found at $BIN."
+              echo "Error: muet binary not found at $BIN."
+              echo "Run 'build --release' first."
+              exit 1
+            fi
+            
+            exec "$BIN" "$@"
+          '';
+        };
+
+        muex-bin = pkgs.writeShellApplication {
+          name = "muex";
+          runtimeInputs = [ pkgs.git ];
+          text = ''
+            ROOT=$(git rev-parse --show-toplevel)
+            BIN="$ROOT/rust/target/release/muex"
+            
+            if [ ! -f "$BIN" ]; then
+              echo "Error: muex binary not found at $BIN."
               echo "Run 'build --release' first."
               exit 1
             fi
@@ -54,7 +71,8 @@
           rustfmt
           clippy
           build-cli
-          munix-bin
+          muet-bin
+          muex-bin
           nix
           intermodal
         ];

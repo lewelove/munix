@@ -1,5 +1,5 @@
 {
-  description = "Munix Core Flake";
+  description = "Muet Core Flake";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -12,7 +12,7 @@
   in {
     packages.${system} = {
       env = pkgs.symlinkJoin {
-        name = "munix-env";
+        name = "muet-env";
         paths = [
           pkgs.shntool
           pkgs.cuetools
@@ -31,8 +31,8 @@
       metadataTomlTemplate = { data }: import ./metadata.toml.template.nix { inherit data; lib = pkgs.lib; };
 
       evalConfig = albumArgs: let
-        envOrigin = builtins.getEnv "MUNIX_ORIGIN_PATH";
-        envSourceName = builtins.getEnv "MUNIX_SOURCE_NAME";
+        envOrigin = builtins.getEnv "MUET_ORIGIN_PATH";
+        envSourceName = builtins.getEnv "MUET_SOURCE_NAME";
         
         origin = {
           path = if ((albumArgs.origin.path or "") != "") then albumArgs.origin.path else envOrigin;
@@ -176,8 +176,8 @@
 
         metadataToml = pkgs.writeText "metadata.toml" (self.lib.metadataTomlTemplate { data = args; });
 
-        envOrigin = builtins.getEnv "MUNIX_ORIGIN_PATH";
-        envSanitizedSourceName = builtins.getEnv "MUNIX_SANITIZED_SOURCE_NAME";
+        envOrigin = builtins.getEnv "MUET_ORIGIN_PATH";
+        envSanitizedSourceName = builtins.getEnv "MUET_SANITIZED_SOURCE_NAME";
         srcBaseName = if envSanitizedSourceName != "" then envSanitizedSourceName else name;
         
         resolvedOriginPath = 

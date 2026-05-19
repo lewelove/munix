@@ -35,8 +35,9 @@ pub struct AppConfig {
 }
 
 impl AppConfig {
+    #[must_use] 
     pub fn load() -> Self {
-        let flake_uri = crate::utils::get_munix_flake_uri();
+        let flake_uri = crate::utils::get_muet_flake_uri();
         let expr = format!("builtins.toJSON ((builtins.getFlake \"{flake_uri}\").lib.evalConfig {{}})");
         
         let output = Command::new("nix")
@@ -50,16 +51,17 @@ impl AppConfig {
             }
             Ok(out) => {
                 let err = String::from_utf8_lossy(&out.stderr);
-                log::error!("Config evaluation error:\n{}", err);
+                log::error!("Config evaluation error:\n{err}");
                 std::process::exit(1);
             }
             Err(e) => {
-                log::error!("Failed to execute nix eval for config: {}", e);
+                log::error!("Failed to execute nix eval for config: {e}");
                 std::process::exit(1);
             }
         }
     }
 
+    #[must_use] 
     pub fn get_store_path(&self) -> PathBuf {
         let store_dir = self.store.as_deref().unwrap_or("/nix/store");
         crate::utils::expand_path(store_dir)

@@ -73,7 +73,7 @@ pub fn resolve_source_origin(
         album_name.clone()
     };
 
-    log::debug!("Resolved internal source name: {}", internal_name);
+    log::debug!("Resolved internal source name: {internal_name}");
 
     let truncated = get_nix32_truncate(&source_hash, Some(store_path));
     let sanitized = sanitize_source_name(&internal_name);
@@ -134,7 +134,7 @@ pub fn get_file_hash(path: &Path, store: Option<&Path>) -> Result<String> {
         anyhow::bail!("Failed to calculate file hash for {}", path.display());
     }
     let hash = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    log::debug!("File hash result: {}", hash);
+    log::debug!("File hash result: {hash}");
     Ok(hash)
 }
 
@@ -150,27 +150,29 @@ pub fn get_path_hash(path: &Path, store: Option<&Path>) -> Result<String> {
         anyhow::bail!("Failed to calculate path (NAR) hash for {}", path.display());
     }
     let hash = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    log::debug!("Path (NAR) hash result: {}", hash);
+    log::debug!("Path (NAR) hash result: {hash}");
     Ok(hash)
 }
 
 pub fn check_hash(actual: &str, expected: &str, name: &str) -> Result<()> {
     log::debug!("Validating {name} - Expected: {expected} | Actual: {actual}");
     if expected.is_empty() || expected == "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" {
-        anyhow::bail!("{} hash is missing or uses a placeholder.\nActual hash: {}", name, actual);
+        anyhow::bail!("{name} hash is missing or uses a placeholder.\nActual hash: {actual}");
     }
     if actual != expected {
-        anyhow::bail!("{} hash mismatch.\nExpected: {}\nActual:   {}", name, expected, actual);
+        anyhow::bail!("{name} hash mismatch.\nExpected: {expected}\nActual:   {actual}");
     }
     Ok(())
 }
 
-pub fn get_munix_flake_uri() -> String {
+#[must_use] 
+pub fn get_muet_flake_uri() -> String {
     let home = dirs::home_dir().expect("Could not find home directory");
-    let config_dir = home.join(".config/munix");
+    let config_dir = home.join(".config/muet");
     format!("path:{}", config_dir.display())
 }
 
+#[must_use] 
 pub fn get_nix32_truncate(hash: &str, store: Option<&Path>) -> String {
     if hash.is_empty() {
         return "nohash".to_string();
@@ -184,14 +186,15 @@ pub fn get_nix32_truncate(hash: &str, store: Option<&Path>) -> String {
     if let Ok(out) = output && out.status.success() {
         let nix32 = String::from_utf8(out.stdout).unwrap_or_default().trim().to_string();
         let truncated: String = nix32.chars().take(32).collect();
-        log::debug!("Truncated base32 hash: {}", truncated);
+        log::debug!("Truncated base32 hash: {truncated}");
         return truncated;
     }
     let fallback = hash.trim_start_matches("sha256-").chars().take(32).collect::<String>().replace('/', "_").replace('+', "-");
-    log::debug!("Base32 conversion failed, using fallback: {}", fallback);
+    log::debug!("Base32 conversion failed, using fallback: {fallback}");
     fallback
 }
 
+#[must_use] 
 pub fn sanitize_source_name(name: &str) -> String {
     name.to_lowercase()
         .chars()
@@ -203,6 +206,7 @@ pub fn sanitize_source_name(name: &str) -> String {
         .join("-")
 }
 
+#[must_use] 
 pub fn ground_logical_path(input: String, store_path: &Path) -> String {
     let logical_prefix = "/nix/store/";
     let mut physical_prefix = store_path.to_path_buf();
@@ -214,7 +218,7 @@ pub fn ground_logical_path(input: String, store_path: &Path) -> String {
 pub fn eval_nix_field(path: &Path, field_path: &str, envs: Option<&HashMap<String, String>>, store: Option<&Path>) -> Result<String> {
     let path_str = path.to_string_lossy();
     let expr = format!(
-        "let res = (import (/. + \"{path_str}\") {{ munix = {{ mkAlbum = x: x; }}; }}); in builtins.toString (res.{field_path} or \"\")"
+        "let res = (import (/. + \"{path_str}\") {{ muet = {{ mkAlbum = x: x; }}; }}); in builtins.toString (res.{field_path} or \"\")"
     );
     log::debug!("Evaluating nix field '{}' from {}", field_path, path.display());
     let mut cmd = Command::new("nix");
@@ -228,18 +232,18 @@ pub fn eval_nix_field(path: &Path, field_path: &str, envs: Option<&HashMap<Strin
     let output = cmd.output().context("Failed to execute nix eval")?;
     if !output.status.success() {
         let err = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("{}", err);
+        anyhow::bail!("{err}");
     }
     let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    log::debug!("Evaluated field '{}': {}", field_path, result);
+    log::debug!("Evaluated field '{field_path}': {result}");
     Ok(result)
 }
 
 pub fn eval_nix_derivation_field(path: &Path, field_path: &str, envs: Option<&HashMap<String, String>>, store: Option<&Path>) -> Result<String> {
     let path_str = path.to_string_lossy();
-    let flake_uri = get_munix_flake_uri();
+    let flake_uri = get_muet_flake_uri();
     let expr = format!(
-        "(import (/. + \"{path_str}\") {{ munix = (builtins.getFlake \"{flake_uri}\").lib; }}).{field_path}"
+        "(import (/. + \"{path_str}\") {{ muet = (builtins.getFlake \"{flake_uri}\").lib; }}).{field_path}"
     );
     log::debug!("Evaluating real derivation field '{}' from {}", field_path, path.display());
     let mut cmd = Command::new("nix");
@@ -253,20 +257,20 @@ pub fn eval_nix_derivation_field(path: &Path, field_path: &str, envs: Option<&Ha
     let output = cmd.output().context("Failed to execute nix eval for derivation")?;
     if !output.status.success() {
         let err = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("{}", err);
+        anyhow::bail!("{err}");
     }
     let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    log::debug!("Evaluated derivation field '{}': {}", field_path, result);
+    log::debug!("Evaluated derivation field '{field_path}': {result}");
     Ok(result)
 }
 
 pub fn eval_config_field(path: &Path, field_path: &str, envs: Option<&HashMap<String, String>>, store: Option<&Path>) -> Result<String> {
-    let flake_uri = get_munix_flake_uri();
+    let flake_uri = get_muet_flake_uri();
     let path_str = path.to_string_lossy();
     let expr = format!(
-        "let munix = (builtins.getFlake \"{flake_uri}\").lib; \
-             args = import (/. + \"{path_str}\") {{ munix = munix // {{ mkAlbum = x: x; }}; }}; \
-             config = munix.evalConfig args; \
+        "let muet = (builtins.getFlake \"{flake_uri}\").lib; \
+             args = import (/. + \"{path_str}\") {{ muet = muet // {{ mkAlbum = x: x; }}; }}; \
+             config = muet.evalConfig args; \
          in builtins.toString (config.{field_path} or \"\")"
     );
     log::debug!("Evaluating config field '{}' for album {}", field_path, path.display());
@@ -281,15 +285,15 @@ pub fn eval_config_field(path: &Path, field_path: &str, envs: Option<&HashMap<St
     let output = cmd.output().context("Failed to execute nix eval for config")?;
     if !output.status.success() {
         let err = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("{}", err);
+        anyhow::bail!("{err}");
     }
     let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    log::debug!("Evaluated config field '{}': {}", field_path, result);
+    log::debug!("Evaluated config field '{field_path}': {result}");
     Ok(result)
 }
 
 pub fn resolve_album_path(path: &str) -> Result<PathBuf> {
-    log::debug!("Resolving album path for input: {}", path);
+    log::debug!("Resolving album path for input: {path}");
     let p = Path::new(path).canonicalize().context("Path does not exist")?;
     if p.is_dir() && p.join("album.nix").exists() {
         log::debug!("Found album.nix inside directory: {}", p.display());
@@ -302,6 +306,7 @@ pub fn resolve_album_path(path: &str) -> Result<PathBuf> {
     }
 }
 
+#[must_use] 
 pub fn expand_path(path_str: &str) -> PathBuf {
     if path_str.starts_with('~')
         && let Some(home) = dirs::home_dir()
@@ -316,6 +321,7 @@ pub fn expand_path(path_str: &str) -> PathBuf {
     PathBuf::from(path_str)
 }
 
+#[must_use] 
 pub fn get_sort_key(filepath: &Path) -> (u8, u32, String) {
     if let Ok(tag) = metaflac::Tag::read_from_path(filepath)
         && let Some(vc) = tag.vorbis_comments()

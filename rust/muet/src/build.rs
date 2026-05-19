@@ -1,13 +1,13 @@
 use anyhow::Result;
-use crate::utils::{eval_nix_field, eval_nix_derivation_field, eval_config_field, resolve_album_path, expand_path, ground_logical_path};
-use crate::config::AppConfig;
+use libmuet::utils::{eval_nix_field, eval_nix_derivation_field, eval_config_field, resolve_album_path, expand_path, ground_logical_path};
+use libmuet::config::AppConfig;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::collections::HashMap;
 
 fn sync_env(store_path: &Path) -> Result<()> {
-    let flake_uri = crate::utils::get_munix_flake_uri();
+    let flake_uri = libmuet::utils::get_muet_flake_uri();
     let gc_roots_profiles = store_path.join("gcroots").join("profiles");
     fs::create_dir_all(&gc_roots_profiles)?;
     let active_env_link = gc_roots_profiles.join("env");
@@ -30,7 +30,7 @@ fn sync_env(store_path: &Path) -> Result<()> {
 }
 
 pub fn run(path: &str, source_type: Option<&str>) -> Result<()> {
-    log::debug!("Starting munix build for path: {}", path);
+    log::debug!("Starting muet build for path: {path}");
 
     let config = AppConfig::load();
     let store_path = config.get_store_path();
@@ -55,17 +55,17 @@ pub fn run(path: &str, source_type: Option<&str>) -> Result<()> {
             log::debug!("Resolved torrent file path: {}", torrent_path.display());
 
             if torrent_path.exists() {
-                let actual_torrent_hash = crate::utils::get_file_hash(&torrent_path, Some(&store_path))?;
-                crate::utils::check_hash(&actual_torrent_hash, &torrent_hash, "source.torrent.hash")?;
+                let actual_torrent_hash = libmuet::utils::get_file_hash(&torrent_path, Some(&store_path))?;
+                libmuet::utils::check_hash(&actual_torrent_hash, &torrent_hash, "source.torrent.hash")?;
             }
         }
     }
 
     let origin_base_path = expand_path(config.origin.as_deref().unwrap_or("."));
     let origin_base = origin_base_path.to_string_lossy().to_string();
-    log::debug!("Mapping MUNIX_ORIGIN_PATH: {}", origin_base);
+    log::debug!("Mapping MUET_ORIGIN_PATH: {origin_base}");
 
-    let res = crate::utils::resolve_source_origin(
+    let res = libmuet::utils::resolve_source_origin(
         &target_path,
         source_type,
         &store_path,
@@ -73,10 +73,10 @@ pub fn run(path: &str, source_type: Option<&str>) -> Result<()> {
     )?;
 
     let mut envs = HashMap::new();
-    envs.insert("MUNIX_ORIGIN_PATH".to_string(), res.origin_path.clone());
-    log::debug!("Mapping MUNIX_SOURCE_NAME: {}", res.internal_name);
-    envs.insert("MUNIX_SOURCE_NAME".to_string(), res.internal_name.clone());
-    envs.insert("MUNIX_SANITIZED_SOURCE_NAME".to_string(), res.sanitized_name.clone());
+    envs.insert("MUET_ORIGIN_PATH".to_string(), res.origin_path.clone());
+    log::debug!("Mapping MUET_SOURCE_NAME: {}", res.internal_name);
+    envs.insert("MUET_SOURCE_NAME".to_string(), res.internal_name.clone());
+    envs.insert("MUET_SANITIZED_SOURCE_NAME".to_string(), res.sanitized_name.clone());
 
     if source_type == Some("torrent") {
         if res.is_in_store {
@@ -86,7 +86,7 @@ pub fn run(path: &str, source_type: Option<&str>) -> Result<()> {
             if !verify_cmd_raw.is_empty() {
                 let verify_cmd = ground_logical_path(verify_cmd_raw, &store_path);
                 log::info!("Executing torrent verification command");
-                log::debug!("Verify command: {}", verify_cmd);
+                log::debug!("Verify command: {verify_cmd}");
                 let status = Command::new("sh").envs(&envs).arg("-c").arg(&verify_cmd).status()?;
                 if !status.success() {
                     anyhow::bail!("Torrent verification failed. Logic returned non-zero exit code.");
@@ -95,10 +95,10 @@ pub fn run(path: &str, source_type: Option<&str>) -> Result<()> {
 
             let physical_origin = PathBuf::from(&res.origin_path);
             if physical_origin.exists() {
-                let actual_origin_hash = crate::utils::get_path_hash(&physical_origin, Some(&store_path))?;
+                let actual_origin_hash = libmuet::utils::get_path_hash(&physical_origin, Some(&store_path))?;
                 let origin_hash = eval_nix_field(&target_path, "origin.hash", None, Some(&store_path))?;
                 log::debug!("Comparing NAR hashes for origin content");
-                crate::utils::check_hash(&actual_origin_hash, &origin_hash, "origin.hash")?;
+                libmuet::utils::check_hash(&actual_origin_hash, &origin_hash, "origin.hash")?;
             } else {
                 anyhow::bail!("Origin path does not exist: {}", physical_origin.display());
             }
@@ -115,14 +115,14 @@ pub fn run(path: &str, source_type: Option<&str>) -> Result<()> {
         };
         log::debug!("Validating cover file: {}", cover_path.display());
         if cover_path.exists() {
-            let actual_cover_hash = crate::utils::get_file_hash(&cover_path, Some(&store_path))?;
-            crate::utils::check_hash(&actual_cover_hash, &cover_hash, "cover.hash")?;
+            let actual_cover_hash = libmuet::utils::get_file_hash(&cover_path, Some(&store_path))?;
+            libmuet::utils::check_hash(&actual_cover_hash, &cover_hash, "cover.hash")?;
         } else {
             anyhow::bail!("Cover file not found at {}", cover_path.display());
         }
     }
 
-    let base_expr = format!("(import ./album.nix {{ munix = (builtins.getFlake \"{}\").lib; }})", crate::utils::get_munix_flake_uri());
+    let base_expr = format!("(import ./album.nix {{ muet = (builtins.getFlake \"{}\").lib; }})", libmuet::utils::get_muet_flake_uri());
     
     let mut build_formats = Vec::new();
     if config.library.as_ref().and_then(|l| l.flac.as_ref()).and_then(|f| f.enable).unwrap_or(false) {
@@ -135,12 +135,12 @@ pub fn run(path: &str, source_type: Option<&str>) -> Result<()> {
     let mut format_store_paths = HashMap::new();
 
     for fmt in build_formats {
-        let fmt_expr = format!("{}.{}", base_expr, fmt);
+        let fmt_expr = format!("{base_expr}.{fmt}");
         let result_link = store_path.join("gcroots").join("albums").join(format!("{}-{}-{}", res.album_name, res.truncated_hash, fmt));
         fs::create_dir_all(result_link.parent().unwrap())?;
 
-        log::info!("Building {} derivation via Nix...", fmt);
-        log::debug!("Nix command expression: {}", fmt_expr);
+        log::info!("Building {fmt} derivation via Nix...");
+        log::debug!("Nix command expression: {fmt_expr}");
         log::debug!("Nix result link: {}", result_link.display());
 
         let mut build_cmd = Command::new("nix");
@@ -157,7 +157,7 @@ pub fn run(path: &str, source_type: Option<&str>) -> Result<()> {
 
         let status = build_cmd.status()?;
         if !status.success() {
-            anyhow::bail!("Nix build failed for format: {}", fmt);
+            anyhow::bail!("Nix build failed for format: {fmt}");
         }
 
         let logical_path = fs::read_link(&result_link)?;
@@ -182,16 +182,16 @@ pub fn run(path: &str, source_type: Option<&str>) -> Result<()> {
         }
 
         if let Err(e) = std::os::unix::fs::symlink(&src_logical_path, &source_link) {
-            log::warn!("Failed to create source GC root link: {}", e);
+            log::warn!("Failed to create source GC root link: {e}");
         }
 
-        envs.insert("MUNIX_ORIGIN_PATH".to_string(), src_logical_path);
+        envs.insert("MUET_ORIGIN_PATH".to_string(), src_logical_path);
         
         let seed_cmd_raw = eval_config_field(&target_path, "commands.torrent.seed", Some(&envs), Some(&store_path)).unwrap_or_default();
         if !seed_cmd_raw.is_empty() {
             let seed_cmd = ground_logical_path(seed_cmd_raw, &store_path);
             log::info!("Executing seed lifecycle command");
-            log::debug!("Seed command: {}", seed_cmd);
+            log::debug!("Seed command: {seed_cmd}");
             let _ = Command::new("sh").envs(&envs).arg("-c").arg(&seed_cmd).status();
         }
     }
@@ -229,7 +229,7 @@ fn materialize_output(store_dir: &Path, target_dir: &Path, store_path: &Path, co
     }
 
     if !link_allowed {
-        log::debug!("Local track materialization skipped for format {} based on link_to_album_root config.", current_fmt);
+        log::debug!("Local track materialization skipped for format {current_fmt} based on link_to_album_root config.");
         return Ok(());
     }
 
@@ -285,9 +285,9 @@ fn sync_library(target_dir: &Path, config: &AppConfig, format_store_paths: &Hash
     };
 
     let folder_name = if albumartist == "Unknown Artist" {
-        album_raw.replace("/", "_")
+        album_raw.replace('/', "_")
     } else {
-        format!("{} - {}", albumartist, album_raw).replace("/", "_")
+        format!("{albumartist} - {album_raw}").replace('/', "_")
     };
 
     if let Some(lib) = &config.library {
@@ -298,7 +298,7 @@ fn sync_library(target_dir: &Path, config: &AppConfig, format_store_paths: &Hash
             && !root.is_empty()
             && let Some(store_dir) = format_store_paths.get("flac")
         {
-            log::info!("Syncing flac collection materialization: {}", folder_name);
+            log::info!("Syncing flac collection materialization: {folder_name}");
             materialize_library(store_dir, root, &folder_name, store_path)?;
         }
         if let Some(opus_cfg) = &lib.opus 
@@ -308,7 +308,7 @@ fn sync_library(target_dir: &Path, config: &AppConfig, format_store_paths: &Hash
             && !root.is_empty()
             && let Some(store_dir) = format_store_paths.get("opus")
         {
-            log::info!("Syncing opus collection materialization: {}", folder_name);
+            log::info!("Syncing opus collection materialization: {folder_name}");
             materialize_library(store_dir, root, &folder_name, store_path)?;
         }
     }
@@ -316,7 +316,7 @@ fn sync_library(target_dir: &Path, config: &AppConfig, format_store_paths: &Hash
 }
 
 fn materialize_library(store_dir: &Path, root: &str, folder_name: &str, store_path: &Path) -> Result<()> {
-    let expanded_root = crate::utils::expand_path(root);
+    let expanded_root = libmuet::utils::expand_path(root);
     if !expanded_root.exists() {
         fs::create_dir_all(&expanded_root)?;
     }

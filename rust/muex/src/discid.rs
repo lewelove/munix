@@ -1,5 +1,5 @@
-use crate::config::AppConfig;
-use crate::utils::{resolve_album_path, resolve_source_origin, expand_path};
+use libmuet::config::AppConfig;
+use libmuet::utils::{resolve_album_path, resolve_source_origin, expand_path};
 use std::path::PathBuf;
 
 pub fn run(source: Option<&str>, tracks: Option<&str>) {
@@ -17,7 +17,7 @@ pub fn run(source: Option<&str>, tracks: Option<&str>) {
         }
     }
 
-    if let Some(ctdb) = crate::utils::resolve_ctdbtocid(&origin_folder, tracks) {
+    if let Some(ctdb) = libmuet::utils::resolve_ctdbtocid(&origin_folder, tracks) {
         println!("https://db.cuetools.net/?tocid={ctdb}");
     } else {
         std::process::exit(1);

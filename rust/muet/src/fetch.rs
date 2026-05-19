@@ -1,20 +1,20 @@
 use anyhow::Result;
-use crate::utils::{eval_config_field, resolve_album_path, ground_logical_path, expand_path};
-use crate::config::AppConfig;
+use libmuet::utils::{eval_config_field, resolve_album_path, ground_logical_path, expand_path};
+use libmuet::config::AppConfig;
 use std::collections::HashMap;
 use std::process::Command;
 
 pub fn run(source: &str, path: &str) -> Result<()> {
     log::debug!("Starting fetch operation");
-    log::debug!("Source: {}", source);
-    log::debug!("Target path: {}", path);
+    log::debug!("Source: {source}");
+    log::debug!("Target path: {path}");
 
     let config = AppConfig::load();
     let store_path = config.get_store_path();
     let album_path = resolve_album_path(path)?;
     let origin_base_path = expand_path(config.origin.as_deref().unwrap_or("."));
 
-    let res = crate::utils::resolve_source_origin(
+    let res = libmuet::utils::resolve_source_origin(
         &album_path,
         Some(source),
         &store_path,
@@ -28,24 +28,24 @@ pub fn run(source: &str, path: &str) -> Result<()> {
 
     let mut envs = HashMap::new();
     log::debug!("Using origin path: {}", res.origin_path);
-    envs.insert("MUNIX_ORIGIN_PATH".to_string(), res.origin_path);
-    envs.insert("MUNIX_SOURCE_NAME".to_string(), res.internal_name);
-    envs.insert("MUNIX_SANITIZED_SOURCE_NAME".to_string(), res.sanitized_name);
+    envs.insert("MUET_ORIGIN_PATH".to_string(), res.origin_path);
+    envs.insert("MUET_SOURCE_NAME".to_string(), res.internal_name);
+    envs.insert("MUET_SANITIZED_SOURCE_NAME".to_string(), res.sanitized_name);
 
     let cmd_field = match source {
         "torrent" => "commands.torrent.fetch",
         "web" => "commands.web.fetch",
-        _ => anyhow::bail!("Unknown source: '{}'. Expected 'torrent' or 'web'.", source),
+        _ => anyhow::bail!("Unknown source: '{source}'. Expected 'torrent' or 'web'."),
     };
 
     let final_cmd_raw = eval_config_field(&album_path, cmd_field, Some(&envs), Some(&store_path))?;
 
     if final_cmd_raw.is_empty() {
-        anyhow::bail!("Command '{}' is missing or empty in config.nix", cmd_field);
+        anyhow::bail!("Command '{cmd_field}' is missing or empty in config.nix");
     }
 
     let final_cmd = ground_logical_path(final_cmd_raw, &store_path);
-    log::debug!("Final resolved fetch command: {}", final_cmd);
+    log::debug!("Final resolved fetch command: {final_cmd}");
 
     log::info!("Executing fetch command...");
     let mut cmd = Command::new("sh");
@@ -53,7 +53,7 @@ pub fn run(source: &str, path: &str) -> Result<()> {
     let status = cmd.status()?;
     
     if !status.success() {
-        anyhow::bail!("Command failed with status: {}", status);
+        anyhow::bail!("Command failed with status: {status}");
     }
 
     log::info!("Fetch operation completed successfully");

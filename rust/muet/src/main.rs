@@ -4,13 +4,9 @@ use anyhow::Result;
 mod build;
 mod fetch;
 mod manifest;
-mod config;
-mod utils;
-mod discid;
-mod remote;
 
 #[derive(Parser)]
-#[command(name = "munix", version = "0.1.0")]
+#[command(name = "muet", version = "0.1.0")]
 struct Cli {
     #[arg(global = true, long)]
     debug: bool,
@@ -45,12 +41,6 @@ enum Commands {
         #[arg(default_value = ".")]
         path: String,
     },
-    Discid {
-        #[arg(long)]
-        source: Option<String>,
-        #[arg(long)]
-        tracks: Option<String>,
-    },
 }
 
 fn main() -> Result<()> {
@@ -71,24 +61,21 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Build { path, source } => {
             if let Err(e) = build::run(&path, source.as_deref()) {
-                log::error!("{}", e);
+                log::error!("{e}");
                 std::process::exit(1);
             }
         }
         Commands::Manifest { torrent, path, tracks, metadata, intermediary } => {
             if let Err(e) = manifest::run(&path, &tracks, torrent.as_deref(), metadata.as_deref(), intermediary) {
-                log::error!("{}", e);
+                log::error!("{e}");
                 std::process::exit(1);
             }
         }
         Commands::Fetch { source, path } => {
             if let Err(e) = fetch::run(&source, &path) {
-                log::error!("{}", e);
+                log::error!("{e}");
                 std::process::exit(1);
             }
-        }
-        Commands::Discid { source, tracks } => {
-            discid::run(source.as_deref(), tracks.as_deref());
         }
     }
 
