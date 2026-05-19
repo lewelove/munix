@@ -164,7 +164,6 @@ pub fn run(path: &str, source_type: Option<&str>) -> Result<()> {
         log::debug!("Build success for {}. Logical store path: {}", fmt, logical_path.display());
 
         let physical_store_path = store_path.join(logical_path.strip_prefix("/").unwrap_or(&logical_path));
-        log::debug!("Materializing symlinks from physical store: {}", physical_store_path.display());
         
         materialize_output(&physical_store_path, target_dir, &store_path, &config, fmt)?;
         format_store_paths.insert(fmt.to_string(), physical_store_path);
@@ -202,7 +201,7 @@ pub fn run(path: &str, source_type: Option<&str>) -> Result<()> {
 }
 
 fn materialize_output(store_dir: &Path, target_dir: &Path, store_path: &Path, config: &AppConfig, current_fmt: &str) -> Result<()> {
-    log::debug!("Cleaning up target directory for {}: {}", current_fmt, target_dir.display());
+    log::debug!("Checking local materialization for {}: {}", current_fmt, target_dir.display());
     
     let link_allowed = match current_fmt {
         "flac" => config.library.as_ref().and_then(|l| l.flac.as_ref()).and_then(|f| f.link_to_album_root).unwrap_or(true),
@@ -222,7 +221,7 @@ fn materialize_output(store_dir: &Path, target_dir: &Path, store_path: &Path, co
                 let is_metadata = path.file_name().and_then(|s| s.to_str()) == Some("metadata.toml");
                 
                 if ext == current_fmt || (current_fmt == "flac" && is_metadata) {
-                    log::debug!("Removing old {} symlink: {}", current_fmt, path.display());
+                    log::debug!("Removing old local {} symlink: {}", current_fmt, path.display());
                     let _ = fs::remove_file(&path);
                 }
             }
@@ -230,7 +229,7 @@ fn materialize_output(store_dir: &Path, target_dir: &Path, store_path: &Path, co
     }
 
     if !link_allowed {
-        log::debug!("Materialization skipped for format {} based on link_to_album_root config.", current_fmt);
+        log::debug!("Local track materialization skipped for format {} based on link_to_album_root config.", current_fmt);
         return Ok(());
     }
 
@@ -253,18 +252,16 @@ fn materialize_output(store_dir: &Path, target_dir: &Path, store_path: &Path, co
         }
 
         if let Ok(resolved_path) = fs::read_link(&store_file) {
-            if resolved_path.starts_with("/nix/store") {
-                store_file = store_path.join(resolved_path.strip_prefix("/").unwrap());
+            if resolved_path.to_string_lossy().starts_with("/nix/store") {
+                store_file = PathBuf::from(ground_logical_path(resolved_path.to_string_lossy().to_string(), store_path));
             } else if resolved_path.is_relative() {
                 store_file = store_dir.join(resolved_path);
-            } else {
-                store_file = resolved_path;
             }
-        } else if store_file.starts_with("/nix/store") {
-            store_file = store_path.join(store_file.strip_prefix("/").unwrap());
+        } else if store_file.to_string_lossy().starts_with("/nix/store") {
+            store_file = PathBuf::from(ground_logical_path(store_file.to_string_lossy().to_string(), store_path));
         }
 
-        log::debug!("Creating link: {} -> {}", target_file.display(), store_file.display());
+        log::debug!("Creating local track link: {} -> {}", target_file.display(), store_file.display());
         std::os::unix::fs::symlink(&store_file, &target_file)?;
     }
     Ok(())
@@ -301,8 +298,8 @@ fn sync_library(target_dir: &Path, config: &AppConfig, format_store_paths: &Hash
             && !root.is_empty()
             && let Some(store_dir) = format_store_paths.get("flac")
         {
-            log::debug!("Syncing flac collection for: {}", folder_name);
-            link_format_to_library(store_dir, root, &folder_name, "flac", store_path)?;
+            log::info!("Syncing flac collection materialization: {}", folder_name);
+            materialize_library(store_dir, root, &folder_name, store_path)?;
         }
         if let Some(opus_cfg) = &lib.opus 
             && opus_cfg.enable.unwrap_or(false)
@@ -311,50 +308,51 @@ fn sync_library(target_dir: &Path, config: &AppConfig, format_store_paths: &Hash
             && !root.is_empty()
             && let Some(store_dir) = format_store_paths.get("opus")
         {
-            log::debug!("Syncing opus collection for: {}", folder_name);
-            link_format_to_library(store_dir, root, &folder_name, "opus", store_path)?;
+            log::info!("Syncing opus collection materialization: {}", folder_name);
+            materialize_library(store_dir, root, &folder_name, store_path)?;
         }
     }
     Ok(())
 }
 
-fn link_format_to_library(store_dir: &Path, root: &str, folder_name: &str, ext_filter: &str, store_path: &Path) -> Result<()> {
+fn materialize_library(store_dir: &Path, root: &str, folder_name: &str, store_path: &Path) -> Result<()> {
     let expanded_root = crate::utils::expand_path(root);
     if !expanded_root.exists() {
         fs::create_dir_all(&expanded_root)?;
     }
     let lib_album_dir = expanded_root.join(folder_name);
-    if !lib_album_dir.exists() {
-        fs::create_dir_all(&lib_album_dir)?;
-    } else if let Ok(entries) = fs::read_dir(&lib_album_dir) {
-        for entry in entries.filter_map(Result::ok) {
-            let path = entry.path();
-            if let Some(ext) = path.extension() 
-                && (ext == ext_filter || ext == "jpg" || ext == "png" || ext == "toml") 
-            {
-                log::debug!("Cleaning up library file: {}", path.display());
-                let _ = fs::remove_file(&path);
-            }
+
+    if let Ok(meta) = fs::symlink_metadata(&lib_album_dir) {
+        if meta.is_symlink() || meta.is_file() {
+            log::debug!("Removing existing library entry: {}", lib_album_dir.display());
+            fs::remove_file(&lib_album_dir)?;
+        } else if meta.is_dir() {
+            log::debug!("Replacing existing library directory: {}", lib_album_dir.display());
+            fs::remove_dir_all(&lib_album_dir)?;
         }
     }
+    fs::create_dir_all(&lib_album_dir)?;
 
-    log::debug!("Scanning store path for library links: {}", store_dir.display());
+    log::debug!("Materializing grounded links to library: {}", lib_album_dir.display());
+
     if let Ok(entries) = fs::read_dir(store_dir) {
         for entry in entries.filter_map(Result::ok) {
             let path = entry.path();
             let file_name = path.file_name().unwrap();
             let dest = lib_album_dir.join(file_name);
-            let mut source = path.clone();
 
+            let mut source = path.clone();
             if let Ok(target) = fs::read_link(&path) {
-                if target.is_absolute() {
+                if target.to_string_lossy().starts_with("/nix/store") {
                     source = PathBuf::from(ground_logical_path(target.to_string_lossy().to_string(), store_path));
-                } else {
+                } else if target.is_relative() {
                     source = store_dir.join(target);
                 }
+            } else if source.to_string_lossy().starts_with("/nix/store") {
+                source = PathBuf::from(ground_logical_path(source.to_string_lossy().to_string(), store_path));
             }
 
-            log::debug!("Creating library link: {} -> {}", dest.display(), source.display());
+            log::debug!("Creating grounded library link: {} -> {}", dest.display(), source.display());
             let _ = std::os::unix::fs::symlink(&source, &dest);
         }
     }

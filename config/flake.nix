@@ -281,6 +281,8 @@
         flac = mkOutputDerivation "flac" flacTracks;
       } // pkgs.lib.optionalAttrs (config.library.opus.enable or false) {
         opus = mkOutputDerivation "opus" opusTracks;
+      } // {
+        sourceStorePath = realSrc;
       };
     };
   };
