@@ -44,7 +44,7 @@ pub fn run(source: &str, path: &str) -> Result<()> {
         anyhow::bail!("Command '{cmd_field}' is missing or empty in config.nix");
     }
 
-    let final_cmd = ground_logical_path(final_cmd_raw, &store_path);
+    let final_cmd = ground_logical_path(&final_cmd_raw, &store_path);
     log::debug!("Final resolved fetch command: {final_cmd}");
 
     log::info!("Executing fetch command...");

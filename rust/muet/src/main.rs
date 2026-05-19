@@ -1,5 +1,4 @@
 use clap::{Parser, Subcommand};
-use anyhow::Result;
 
 mod build;
 mod fetch;
@@ -43,7 +42,7 @@ enum Commands {
     },
 }
 
-fn main() -> Result<()> {
+fn main() {
     let cli = Cli::parse();
 
     let log_level = if cli.debug {
@@ -78,6 +77,4 @@ fn main() -> Result<()> {
             }
         }
     }
-
-    Ok(())
 }

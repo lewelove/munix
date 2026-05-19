@@ -6,32 +6,35 @@ use std::fs;
 use serde_json::{json, Value};
 use libmuet::config::AppConfig;
 
+#[allow(clippy::too_many_lines)]
 pub fn run(path_str: &str, tracks_filter: &str, torrent_path: Option<&str>, metadata_path: Option<&str>, intermediary: bool) -> Result<()> {
     let target_dir = Path::new(path_str).canonicalize().unwrap_or_else(|_| PathBuf::from(path_str));
     
     let album_nix_path = target_dir.join("album.nix");
-    let mut origin_hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_string();
-    if album_nix_path.exists()
-        && let Ok(h) = libmuet::utils::eval_nix_field(&album_nix_path, "origin.hash", None, None)
+    let origin_hash = if album_nix_path.exists()
+        && let Ok(h) = libmuet::utils::eval_nix_field::<std::collections::hash_map::RandomState>(&album_nix_path, "origin.hash", None, None)
         && !h.is_empty()
     {
-        origin_hash = h;
-    }
-
-    let t_path = if let Some(t) = torrent_path {
-        Path::new(t).to_path_buf()
+        h
     } else {
-        let mut found = None;
-        if target_dir.is_dir() && let Ok(entries) = std::fs::read_dir(&target_dir) {
-            for entry in entries.filter_map(Result::ok) {
-                if entry.path().extension().and_then(|s| s.to_str()) == Some("torrent") {
-                    found = Some(entry.path());
-                    break;
+        "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_string()
+    };
+
+    let t_path = torrent_path.map_or_else(
+        || {
+            let mut found = None;
+            if target_dir.is_dir() && let Ok(entries) = std::fs::read_dir(&target_dir) {
+                for entry in entries.filter_map(Result::ok) {
+                    if entry.path().extension().and_then(|s| s.to_str()) == Some("torrent") {
+                        found = Some(entry.path());
+                        break;
+                    }
                 }
             }
-        }
-        found.unwrap_or_else(|| PathBuf::from("."))
-    };
+            found.unwrap_or_else(|| PathBuf::from("."))
+        },
+        |t| Path::new(t).to_path_buf(),
+    );
 
     if !t_path.exists() {
         anyhow::bail!("Torrent file not found");
@@ -40,8 +43,8 @@ pub fn run(path_str: &str, tracks_filter: &str, torrent_path: Option<&str>, meta
     let torrent_hash = libmuet::utils::get_file_hash(&t_path, None).unwrap_or_default();
     let torrent = Torrent::read_from_file(&t_path).map_err(|_| anyhow::anyhow!("Torrent parse error"))?;
 
-    let rel_t_path = t_path.canonicalize().unwrap_or(t_path.clone())
-        .strip_prefix(&target_dir).map(std::path::Path::to_path_buf).unwrap_or(t_path.clone());
+    let rel_t_path = t_path.canonicalize().unwrap_or_else(|_| t_path.clone())
+        .strip_prefix(&target_dir).map_or_else(|_| t_path.clone(), std::path::Path::to_path_buf);
 
     let mut cover_file = "cover.png".to_string();
     let mut cover_hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_string();
@@ -98,14 +101,14 @@ pub fn run(path_str: &str, tracks_filter: &str, torrent_path: Option<&str>, meta
     if let Some(m_path) = metadata_path {
         if m_path.starts_with("http") {
             let remote_data = libmuet::remote::fetch_musicbrainz_data(m_path)?;
-            apply_remote_metadata(&mut data, remote_data);
+            apply_remote_metadata(&mut data, &remote_data);
         } else {
             let p = Path::new(m_path);
             if p.exists() {
                 let content = std::fs::read_to_string(p)?;
                 let parsed: toml::Value = toml::from_str(&content)?;
                 let json_meta = serde_json::to_value(parsed)?;
-                apply_local_metadata(&mut data, json_meta);
+                apply_local_metadata(&mut data, &json_meta);
             }
         }
     }
@@ -208,15 +211,15 @@ fn sanitize_quotes(v: &mut Value) {
     }
 }
 
-fn apply_local_metadata(data: &mut Value, json_meta: Value) {
+fn apply_local_metadata(data: &mut Value, json_meta: &Value) {
     let mut max_disc = 1;
-    if let Some(album_src) = json_meta.get("album").and_then(|v| v.as_object()) {
+    if let Some(album_src) = json_meta.get("album").and_then(Value::as_object) {
         for (k, v) in album_src {
             let target = if k.contains("musicbrainz") { "mbid" } else { "metadata" };
             data["album"][target][k] = v.clone();
         }
     }
-    if let Some(tracks_src) = json_meta.get("tracks").and_then(|v| v.as_array()) {
+    if let Some(tracks_src) = json_meta.get("tracks").and_then(Value::as_array) {
         let mut tracks_out = Vec::new();
         for t in tracks_src {
             let mut t_obj = json!({ "metadata": {}, "mbid": {} });
@@ -236,7 +239,7 @@ fn apply_local_metadata(data: &mut Value, json_meta: Value) {
     data["album"]["info"]["total_discs"] = json!(max_disc);
 }
 
-fn apply_remote_metadata(data: &mut Value, remote: Value) {
+fn apply_remote_metadata(data: &mut Value, remote: &Value) {
     let rg = remote.get("release_group").unwrap();
     let rel = remote.get("release");
     let discogs = remote.get("discogs");
@@ -272,7 +275,7 @@ fn apply_remote_metadata(data: &mut Value, remote: Value) {
             }
         }
 
-        let source = dg.get("master").or(dg.get("release"));
+        let source = dg.get("master").or_else(|| dg.get("release"));
         if let Some(s) = source {
             if let Some(genres) = s.get("genres") { data["album"]["metadata"]["genre"] = genres.clone(); }
             if let Some(styles) = s.get("styles") { data["album"]["metadata"]["styles"] = styles.clone(); }
@@ -305,14 +308,14 @@ fn apply_remote_metadata(data: &mut Value, remote: Value) {
                 if let Some(track_list) = medium.get("tracks").and_then(|t| t.as_array()) {
                     for (t_idx, track) in track_list.iter().enumerate() {
                         let t_artist_obj = track.get("artist-credit").and_then(|a| a.as_array()).and_then(|a| a.first());
-                        let t_artist = t_artist_obj.and_then(|c| c.get("name")).cloned().unwrap_or(json!(artist));
-                        let t_artist_id = t_artist_obj.and_then(|c| c.get("artist")).and_then(|a| a.get("id")).cloned().unwrap_or(artist_id.clone());
+                        let t_artist = t_artist_obj.and_then(|c| c.get("name")).cloned().unwrap_or_else(|| json!(artist));
+                        let t_artist_id = t_artist_obj.and_then(|c| c.get("artist")).and_then(|a| a.get("id")).cloned().unwrap_or_else(|| artist_id.clone());
 
                         tracks.push(json!({
                             "metadata": {
                                 "tracknumber": t_idx + 1,
                                 "discnumber": m_idx + 1,
-                                "title": track.get("title").cloned().unwrap_or(json!("Untitled")),
+                                "title": track.get("title").cloned().unwrap_or_else(|| json!("Untitled")),
                                 "artist": t_artist
                             },
                             "mbid": {

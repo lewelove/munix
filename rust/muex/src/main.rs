@@ -1,5 +1,4 @@
 use clap::{Parser, Subcommand};
-use anyhow::Result;
 
 mod discid;
 
@@ -23,7 +22,7 @@ enum Commands {
     },
 }
 
-fn main() -> Result<()> {
+fn main() {
     let cli = Cli::parse();
 
     let log_level = if cli.debug {
@@ -43,6 +42,4 @@ fn main() -> Result<()> {
             discid::run(source.as_deref(), tracks.as_deref());
         }
     }
-
-    Ok(())
 }

@@ -29,6 +29,7 @@ fn sync_env(store_path: &Path) -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 pub fn run(path: &str, source_type: Option<&str>) -> Result<()> {
     log::debug!("Starting muet build for path: {path}");
 
@@ -43,8 +44,8 @@ pub fn run(path: &str, source_type: Option<&str>) -> Result<()> {
 
     if source_type == Some("torrent") {
         log::debug!("Source type is torrent, initiating pre-verify sequence");
-        let torrent_file_raw = eval_nix_field(&target_path, "source.torrent.file", None, Some(&store_path))?;
-        let torrent_hash = eval_nix_field(&target_path, "source.torrent.hash", None, Some(&store_path))?;
+        let torrent_file_raw = eval_nix_field::<std::collections::hash_map::RandomState>(&target_path, "source.torrent.file", None, Some(&store_path))?;
+        let torrent_hash = eval_nix_field::<std::collections::hash_map::RandomState>(&target_path, "source.torrent.hash", None, Some(&store_path))?;
         
         if !torrent_file_raw.is_empty() {
             let torrent_path = if torrent_file_raw.starts_with("./") {
@@ -84,7 +85,7 @@ pub fn run(path: &str, source_type: Option<&str>) -> Result<()> {
         } else {
             let verify_cmd_raw = eval_config_field(&target_path, "commands.torrent.verify", Some(&envs), Some(&store_path))?;
             if !verify_cmd_raw.is_empty() {
-                let verify_cmd = ground_logical_path(verify_cmd_raw, &store_path);
+                let verify_cmd = ground_logical_path(&verify_cmd_raw, &store_path);
                 log::info!("Executing torrent verification command");
                 log::debug!("Verify command: {verify_cmd}");
                 let status = Command::new("sh").envs(&envs).arg("-c").arg(&verify_cmd).status()?;
@@ -96,7 +97,7 @@ pub fn run(path: &str, source_type: Option<&str>) -> Result<()> {
             let physical_origin = PathBuf::from(&res.origin_path);
             if physical_origin.exists() {
                 let actual_origin_hash = libmuet::utils::get_path_hash(&physical_origin, Some(&store_path))?;
-                let origin_hash = eval_nix_field(&target_path, "origin.hash", None, Some(&store_path))?;
+                let origin_hash = eval_nix_field::<std::collections::hash_map::RandomState>(&target_path, "origin.hash", None, Some(&store_path))?;
                 log::debug!("Comparing NAR hashes for origin content");
                 libmuet::utils::check_hash(&actual_origin_hash, &origin_hash, "origin.hash")?;
             } else {
@@ -105,8 +106,8 @@ pub fn run(path: &str, source_type: Option<&str>) -> Result<()> {
         }
     }
 
-    let cover_file_raw = eval_nix_field(&target_path, "cover.file", None, Some(&store_path))?;
-    let cover_hash = eval_nix_field(&target_path, "cover.hash", None, Some(&store_path))?;
+    let cover_file_raw = eval_nix_field::<std::collections::hash_map::RandomState>(&target_path, "cover.file", None, Some(&store_path))?;
+    let cover_hash = eval_nix_field::<std::collections::hash_map::RandomState>(&target_path, "cover.hash", None, Some(&store_path))?;
     if !cover_file_raw.is_empty() && cover_file_raw != "null" {
         let cover_path = if cover_file_raw.starts_with("./") {
             target_dir.join(cover_file_raw.trim_start_matches("./"))
@@ -189,7 +190,7 @@ pub fn run(path: &str, source_type: Option<&str>) -> Result<()> {
         
         let seed_cmd_raw = eval_config_field(&target_path, "commands.torrent.seed", Some(&envs), Some(&store_path)).unwrap_or_default();
         if !seed_cmd_raw.is_empty() {
-            let seed_cmd = ground_logical_path(seed_cmd_raw, &store_path);
+            let seed_cmd = ground_logical_path(&seed_cmd_raw, &store_path);
             log::info!("Executing seed lifecycle command");
             log::debug!("Seed command: {seed_cmd}");
             let _ = Command::new("sh").envs(&envs).arg("-c").arg(&seed_cmd).status();
@@ -253,12 +254,12 @@ fn materialize_output(store_dir: &Path, target_dir: &Path, store_path: &Path, co
 
         if let Ok(resolved_path) = fs::read_link(&store_file) {
             if resolved_path.to_string_lossy().starts_with("/nix/store") {
-                store_file = PathBuf::from(ground_logical_path(resolved_path.to_string_lossy().to_string(), store_path));
+                store_file = PathBuf::from(ground_logical_path(&resolved_path.to_string_lossy(), store_path));
             } else if resolved_path.is_relative() {
                 store_file = store_dir.join(resolved_path);
             }
         } else if store_file.to_string_lossy().starts_with("/nix/store") {
-            store_file = PathBuf::from(ground_logical_path(store_file.to_string_lossy().to_string(), store_path));
+            store_file = PathBuf::from(ground_logical_path(&store_file.to_string_lossy(), store_path));
         }
 
         log::debug!("Creating local track link: {} -> {}", target_file.display(), store_file.display());
@@ -344,12 +345,12 @@ fn materialize_library(store_dir: &Path, root: &str, folder_name: &str, store_pa
             let mut source = path.clone();
             if let Ok(target) = fs::read_link(&path) {
                 if target.to_string_lossy().starts_with("/nix/store") {
-                    source = PathBuf::from(ground_logical_path(target.to_string_lossy().to_string(), store_path));
+                    source = PathBuf::from(ground_logical_path(&target.to_string_lossy(), store_path));
                 } else if target.is_relative() {
                     source = store_dir.join(target);
                 }
             } else if source.to_string_lossy().starts_with("/nix/store") {
-                source = PathBuf::from(ground_logical_path(source.to_string_lossy().to_string(), store_path));
+                source = PathBuf::from(ground_logical_path(&source.to_string_lossy(), store_path));
             }
 
             log::debug!("Creating grounded library link: {} -> {}", dest.display(), source.display());

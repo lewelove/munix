@@ -38,21 +38,21 @@ pub fn resolve_source_origin(
     store_path: &Path,
     origin_base_path: &Path,
 ) -> Result<SourceResolution> {
-    let album_name = eval_nix_field(target_path, "name", None, Some(store_path)).unwrap_or_default();
+    let album_name = eval_nix_field::<std::collections::hash_map::RandomState>(target_path, "name", None, Some(store_path)).unwrap_or_default();
     
     let mut source_name_attr = String::new();
     let mut source_hash = String::new();
     let mut detected_torrent_name = String::new();
     
     if let Some(st) = source_type {
-        source_name_attr = eval_nix_field(target_path, &format!("source.{st}.name"), None, Some(store_path)).unwrap_or_default();
-        source_hash = eval_nix_field(target_path, &format!("source.{st}.hash"), None, Some(store_path)).unwrap_or_default();
+        source_name_attr = eval_nix_field::<std::collections::hash_map::RandomState>(target_path, &format!("source.{st}.name"), None, Some(store_path)).unwrap_or_default();
+        source_hash = eval_nix_field::<std::collections::hash_map::RandomState>(target_path, &format!("source.{st}.hash"), None, Some(store_path)).unwrap_or_default();
         
         if st == "torrent" && source_name_attr.is_empty() {
-            let torrent_file_raw = eval_nix_field(target_path, "source.torrent.file", None, Some(store_path)).unwrap_or_default();
+            let torrent_file_raw = eval_nix_field::<std::collections::hash_map::RandomState>(target_path, "source.torrent.file", None, Some(store_path)).unwrap_or_default();
             if !torrent_file_raw.is_empty() && torrent_file_raw != "null" {
                 let torrent_path = if torrent_file_raw.starts_with("./") {
-                    target_path.parent().unwrap_or(Path::new(".")).join(torrent_file_raw.trim_start_matches("./"))
+                    target_path.parent().unwrap_or_else(|| Path::new(".")).join(torrent_file_raw.trim_start_matches("./"))
                 } else {
                     PathBuf::from(&torrent_file_raw)
                 };
@@ -103,7 +103,7 @@ pub fn resolve_source_origin(
     } else if source_type == Some("torrent") {
         origin_base_path.join("torrent").join(&link_name).to_string_lossy().to_string()
     } else {
-        let origin_path_nix = eval_nix_field(target_path, "origin.path", None, Some(store_path)).unwrap_or_default();
+        let origin_path_nix = eval_nix_field::<std::collections::hash_map::RandomState>(target_path, "origin.path", None, Some(store_path)).unwrap_or_default();
         if !origin_path_nix.is_empty() {
             PathBuf::from(origin_path_nix).to_string_lossy().to_string()
         } else {
@@ -207,7 +207,7 @@ pub fn sanitize_source_name(name: &str) -> String {
 }
 
 #[must_use] 
-pub fn ground_logical_path(input: String, store_path: &Path) -> String {
+pub fn ground_logical_path(input: &str, store_path: &Path) -> String {
     let logical_prefix = "/nix/store/";
     let mut physical_prefix = store_path.to_path_buf();
     physical_prefix.push("nix/store/");
@@ -215,7 +215,7 @@ pub fn ground_logical_path(input: String, store_path: &Path) -> String {
     input.replace(logical_prefix, &physical_prefix_str)
 }
 
-pub fn eval_nix_field(path: &Path, field_path: &str, envs: Option<&HashMap<String, String>>, store: Option<&Path>) -> Result<String> {
+pub fn eval_nix_field<S: std::hash::BuildHasher>(path: &Path, field_path: &str, envs: Option<&HashMap<String, String, S>>, store: Option<&Path>) -> Result<String> {
     let path_str = path.to_string_lossy();
     let expr = format!(
         "let res = (import (/. + \"{path_str}\") {{ muet = {{ mkAlbum = x: x; }}; }}); in builtins.toString (res.{field_path} or \"\")"
@@ -239,7 +239,7 @@ pub fn eval_nix_field(path: &Path, field_path: &str, envs: Option<&HashMap<Strin
     Ok(result)
 }
 
-pub fn eval_nix_derivation_field(path: &Path, field_path: &str, envs: Option<&HashMap<String, String>>, store: Option<&Path>) -> Result<String> {
+pub fn eval_nix_derivation_field<S: std::hash::BuildHasher>(path: &Path, field_path: &str, envs: Option<&HashMap<String, String, S>>, store: Option<&Path>) -> Result<String> {
     let path_str = path.to_string_lossy();
     let flake_uri = get_muet_flake_uri();
     let expr = format!(
@@ -264,7 +264,7 @@ pub fn eval_nix_derivation_field(path: &Path, field_path: &str, envs: Option<&Ha
     Ok(result)
 }
 
-pub fn eval_config_field(path: &Path, field_path: &str, envs: Option<&HashMap<String, String>>, store: Option<&Path>) -> Result<String> {
+pub fn eval_config_field<S: std::hash::BuildHasher>(path: &Path, field_path: &str, envs: Option<&HashMap<String, String, S>>, store: Option<&Path>) -> Result<String> {
     let flake_uri = get_muet_flake_uri();
     let path_str = path.to_string_lossy();
     let expr = format!(
