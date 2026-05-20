@@ -90,7 +90,7 @@ pub fn resolve_source_origin(
     {
         let logical_str = logical_target.to_string_lossy().to_string();
         if logical_str.starts_with("/nix/store/") {
-            let physical_target = store_path.join(logical_str.trim_start_matches('/'));
+            let physical_target = store_path.join("nix/store").join(logical_str.trim_start_matches("/nix/store/"));
             if physical_target.exists() {
                 is_in_store = true;
                 store_origin_path = physical_target.to_string_lossy().to_string();
@@ -204,15 +204,6 @@ pub fn sanitize_source_name(name: &str) -> String {
         .filter(|s| !s.is_empty())
         .collect::<Vec<_>>()
         .join("-")
-}
-
-#[must_use] 
-pub fn ground_logical_path(input: &str, store_path: &Path) -> String {
-    let logical_prefix = "/nix/store/";
-    let mut physical_prefix = store_path.to_path_buf();
-    physical_prefix.push("nix/store/");
-    let physical_prefix_str = physical_prefix.to_string_lossy().to_string();
-    input.replace(logical_prefix, &physical_prefix_str)
 }
 
 pub fn eval_nix_field<S: std::hash::BuildHasher>(path: &Path, field_path: &str, envs: Option<&HashMap<String, String, S>>, store: Option<&Path>) -> Result<String> {

@@ -21,6 +21,9 @@
           pkgs.imagemagick
           pkgs.jq
           pkgs.stdenv
+          pkgs.intermodal
+          pkgs.transmission_4
+          pkgs.curl
           nixpkgs
         ];
       };

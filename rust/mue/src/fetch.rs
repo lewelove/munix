@@ -1,5 +1,5 @@
 use anyhow::Result;
-use libmue::utils::{eval_config_field, resolve_album_path, ground_logical_path, expand_path};
+use libmue::utils::{eval_config_field, resolve_album_path, expand_path};
 use libmue::config::AppConfig;
 use std::collections::HashMap;
 use std::process::Command;
@@ -38,18 +38,20 @@ pub fn run(source: &str, path: &str) -> Result<()> {
         _ => anyhow::bail!("Unknown source: '{source}'. Expected 'torrent' or 'web'."),
     };
 
-    let final_cmd_raw = eval_config_field(&album_path, cmd_field, Some(&envs), Some(&store_path))?;
+    let final_cmd = eval_config_field(&album_path, cmd_field, Some(&envs), Some(&store_path))?;
 
-    if final_cmd_raw.is_empty() {
+    if final_cmd.is_empty() {
         anyhow::bail!("Command '{cmd_field}' is missing or empty in config.nix");
     }
 
-    let final_cmd = ground_logical_path(&final_cmd_raw, &store_path);
     log::debug!("Final resolved fetch command: {final_cmd}");
+    
+    let env_bin = store_path.join("gcroots/profiles/env/bin");
+    let injected_path = format!("{}:{}", env_bin.display(), std::env::var("PATH").unwrap_or_default());
 
     log::info!("Executing fetch command...");
     let mut cmd = Command::new("sh");
-    cmd.envs(&envs).arg("-c").arg(&final_cmd);
+    cmd.env("PATH", injected_path).envs(&envs).arg("-c").arg(&final_cmd);
     let status = cmd.status()?;
     
     if !status.success() {

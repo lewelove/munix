@@ -1,5 +1,5 @@
 use anyhow::Result;
-use libmue::utils::{eval_nix_field, eval_nix_derivation_field, eval_config_field, resolve_album_path, expand_path, ground_logical_path};
+use libmue::utils::{eval_nix_field, eval_nix_derivation_field, eval_config_field, resolve_album_path, expand_path};
 use libmue::config::AppConfig;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -12,7 +12,6 @@ fn sync_env(store_path: &Path) -> Result<()> {
     fs::create_dir_all(&gc_roots_profiles)?;
     let active_env_link = gc_roots_profiles.join("env");
 
-    log::info!("Syncing toolchain environment GC root...");
     let mut cmd = Command::new("nix");
     cmd.arg("build")
         .arg("--store")
@@ -30,7 +29,7 @@ fn sync_env(store_path: &Path) -> Result<()> {
 }
 
 #[allow(clippy::too_many_lines)]
-pub fn run(path: &str, source_type: Option<&str>) -> Result<()> {
+pub fn run(path: &str, source_type: Option<&str>, _flake: Option<&str>) -> Result<()> {
     log::debug!("Starting mue build for path: {path}");
 
     let config = AppConfig::load();
@@ -38,6 +37,9 @@ pub fn run(path: &str, source_type: Option<&str>) -> Result<()> {
     log::debug!("Using Nix store at: {}", store_path.display());
 
     sync_env(&store_path)?;
+    
+    let env_bin = store_path.join("gcroots/profiles/env/bin");
+    let injected_path = format!("{}:{}", env_bin.display(), std::env::var("PATH").unwrap_or_default());
 
     let target_path = resolve_album_path(path)?;
     let target_dir = target_path.parent().unwrap();
@@ -83,12 +85,16 @@ pub fn run(path: &str, source_type: Option<&str>) -> Result<()> {
         if res.is_in_store {
             log::info!("Found pinned source in store. Skipping verification...");
         } else {
-            let verify_cmd_raw = eval_config_field(&target_path, "commands.torrent.verify", Some(&envs), Some(&store_path))?;
-            if !verify_cmd_raw.is_empty() {
-                let verify_cmd = ground_logical_path(&verify_cmd_raw, &store_path);
+            let verify_cmd = eval_config_field(&target_path, "commands.torrent.verify", Some(&envs), Some(&store_path))?;
+            if !verify_cmd.is_empty() {
                 log::info!("Executing torrent verification command");
                 log::debug!("Verify command: {verify_cmd}");
-                let status = Command::new("sh").envs(&envs).arg("-c").arg(&verify_cmd).status()?;
+                let status = Command::new("sh")
+                    .env("PATH", &injected_path)
+                    .envs(&envs)
+                    .arg("-c")
+                    .arg(&verify_cmd)
+                    .status()?;
                 if !status.success() {
                     anyhow::bail!("Torrent verification failed. Logic returned non-zero exit code.");
                 }
@@ -188,14 +194,15 @@ pub fn run(path: &str, source_type: Option<&str>) -> Result<()> {
 
         envs.insert("MUE_ORIGIN_PATH".to_string(), src_logical_path);
         
-        let seed_cmd_raw = eval_config_field(&target_path, "commands.torrent.seed", Some(&envs), Some(&store_path)).unwrap_or_default();
-        if !seed_cmd_raw.is_empty() {
-            let seed_cmd = ground_logical_path(&seed_cmd_raw, &store_path);
+        let seed_cmd = eval_config_field(&target_path, "commands.torrent.seed", Some(&envs), Some(&store_path)).unwrap_or_default();
+        if !seed_cmd.is_empty() {
             log::info!("Executing seed lifecycle command");
             log::debug!("Seed command: {seed_cmd}");
-            let _ = Command::new("sh").envs(&envs).arg("-c").arg(&seed_cmd).status();
+            let _ = Command::new("sh").env("PATH", &injected_path).envs(&envs).arg("-c").arg(&seed_cmd).status();
         }
     }
+
+    crate::library::migrate_store()?;
 
     log::info!("Build completed successfully.");
     Ok(())
@@ -215,8 +222,6 @@ fn materialize_output(store_dir: &Path, target_dir: &Path, store_path: &Path, co
             let path = entry.path();
             if let Ok(meta) = fs::symlink_metadata(&path)
                 && meta.is_symlink()
-                && let Ok(target) = fs::read_link(&path)
-                && target.starts_with(store_path)
             {
                 let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
                 let is_metadata = path.file_name().and_then(|s| s.to_str()) == Some("metadata.toml");
@@ -239,7 +244,6 @@ fn materialize_output(store_dir: &Path, target_dir: &Path, store_path: &Path, co
         let file_name = entry.file_name();
         if file_name == "album.nix" { continue; }
 
-        let mut store_file = entry.path();
         let target_file = target_dir.join(&file_name);
 
         if let Ok(meta) = fs::symlink_metadata(&target_file) {
@@ -252,18 +256,12 @@ fn materialize_output(store_dir: &Path, target_dir: &Path, store_path: &Path, co
             }
         }
 
-        if let Ok(resolved_path) = fs::read_link(&store_file) {
-            if resolved_path.to_string_lossy().starts_with("/nix/store") {
-                store_file = PathBuf::from(ground_logical_path(&resolved_path.to_string_lossy(), store_path));
-            } else if resolved_path.is_relative() {
-                store_file = store_dir.join(resolved_path);
-            }
-        } else if store_file.to_string_lossy().starts_with("/nix/store") {
-            store_file = PathBuf::from(ground_logical_path(&store_file.to_string_lossy(), store_path));
-        }
+        let logical_source = fs::read_link(entry.path()).unwrap_or_else(|_| {
+            entry.path().strip_prefix(store_path).map_or_else(|_| entry.path(), |stripped| PathBuf::from("/").join(stripped))
+        });
 
-        log::debug!("Creating local track link: {} -> {}", target_file.display(), store_file.display());
-        std::os::unix::fs::symlink(&store_file, &target_file)?;
+        log::debug!("Creating local track link: {} -> {}", target_file.display(), logical_source.display());
+        std::os::unix::fs::symlink(&logical_source, &target_file)?;
     }
     Ok(())
 }
@@ -342,19 +340,12 @@ fn materialize_library(store_dir: &Path, root: &str, folder_name: &str, store_pa
             let file_name = path.file_name().unwrap();
             let dest = lib_album_dir.join(file_name);
 
-            let mut source = path.clone();
-            if let Ok(target) = fs::read_link(&path) {
-                if target.to_string_lossy().starts_with("/nix/store") {
-                    source = PathBuf::from(ground_logical_path(&target.to_string_lossy(), store_path));
-                } else if target.is_relative() {
-                    source = store_dir.join(target);
-                }
-            } else if source.to_string_lossy().starts_with("/nix/store") {
-                source = PathBuf::from(ground_logical_path(&source.to_string_lossy(), store_path));
-            }
+            let logical_source = fs::read_link(&path).unwrap_or_else(|_| {
+                path.strip_prefix(store_path).map_or_else(|_| path.clone(), |stripped| PathBuf::from("/").join(stripped))
+            });
 
-            log::debug!("Creating grounded library link: {} -> {}", dest.display(), source.display());
-            let _ = std::os::unix::fs::symlink(&source, &dest);
+            log::debug!("Creating grounded library link: {} -> {}", dest.display(), logical_source.display());
+            let _ = std::os::unix::fs::symlink(&logical_source, &dest);
         }
     }
     Ok(())

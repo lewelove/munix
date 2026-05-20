@@ -3,6 +3,7 @@ use clap::{Parser, Subcommand};
 mod build;
 mod fetch;
 mod manifest;
+mod library;
 
 #[derive(Parser)]
 #[command(name = "mue", version = "0.1.0")]
@@ -16,11 +17,17 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    Build {
+    Album {
         #[arg(default_value = ".")]
         path: String,
         #[arg(long)]
         source: Option<String>,
+        #[arg(long)]
+        flake: Option<String>,
+    },
+    Library {
+        #[command(subcommand)]
+        command: LibraryCommands,
     },
     Manifest {
         #[arg(long)]
@@ -42,6 +49,15 @@ enum Commands {
     },
 }
 
+#[derive(Subcommand)]
+enum LibraryCommands {
+    Rebuild,
+    Init {
+        path: String,
+    },
+    MigrateStore,
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -58,10 +74,32 @@ fn main() {
         .unwrap();
 
     match cli.command {
-        Commands::Build { path, source } => {
-            if let Err(e) = build::run(&path, source.as_deref()) {
+        Commands::Album { path, source, flake } => {
+            if let Err(e) = build::run(&path, source.as_deref(), flake.as_deref()) {
                 log::error!("{e}");
                 std::process::exit(1);
+            }
+        }
+        Commands::Library { command } => {
+            match command {
+                LibraryCommands::Rebuild => {
+                    if let Err(e) = library::rebuild() {
+                        log::error!("{e}");
+                        std::process::exit(1);
+                    }
+                }
+                LibraryCommands::Init { path } => {
+                    if let Err(e) = library::init(&path) {
+                        log::error!("{e}");
+                        std::process::exit(1);
+                    }
+                }
+                LibraryCommands::MigrateStore => {
+                    if let Err(e) = library::migrate_store() {
+                        log::error!("{e}");
+                        std::process::exit(1);
+                    }
+                }
             }
         }
         Commands::Manifest { torrent, path, tracks, metadata, intermediary } => {
