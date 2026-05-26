@@ -1,13 +1,13 @@
 use anyhow::Result;
-use libmue::utils::{eval_nix_field, eval_nix_derivation_field, eval_config_field, resolve_album_path, expand_path};
-use libmue::config::AppConfig;
+use libmute::utils::{eval_nix_field, eval_nix_derivation_field, eval_config_field, resolve_album_path, expand_path};
+use libmute::config::AppConfig;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::collections::HashMap;
 
 fn sync_env(store_path: &Path) -> Result<()> {
-    let flake_uri = libmue::utils::get_mue_flake_uri();
+    let flake_uri = libmute::utils::get_mute_flake_uri();
     let gc_roots_profiles = store_path.join("gcroots").join("profiles");
     fs::create_dir_all(&gc_roots_profiles)?;
     let active_env_link = gc_roots_profiles.join("env");
@@ -30,7 +30,7 @@ fn sync_env(store_path: &Path) -> Result<()> {
 
 #[allow(clippy::too_many_lines)]
 pub fn run(path: &str, _flake: Option<&str>) -> Result<()> {
-    log::debug!("Starting mue build for path: {path}");
+    log::debug!("Starting mute build for path: {path}");
 
     let config = AppConfig::load();
     let store_path = config.get_store_path();
@@ -44,7 +44,7 @@ pub fn run(path: &str, _flake: Option<&str>) -> Result<()> {
     let target_path = resolve_album_path(path)?;
     let target_dir = target_path.parent().unwrap();
 
-    let source_type_str = libmue::utils::detect_source_type(&target_path, Some(&store_path))?;
+    let source_type_str = libmute::utils::detect_source_type(&target_path, Some(&store_path))?;
     let source_type = if source_type_str.is_empty() { None } else { Some(source_type_str.as_str()) };
 
     if source_type == Some("torrent") {
@@ -61,17 +61,17 @@ pub fn run(path: &str, _flake: Option<&str>) -> Result<()> {
             log::debug!("Resolved torrent file path: {}", torrent_path.display());
 
             if torrent_path.exists() {
-                let actual_torrent_hash = libmue::utils::get_file_hash(&torrent_path, Some(&store_path))?;
-                libmue::utils::check_hash(&actual_torrent_hash, &torrent_hash, "source.torrent.hash")?;
+                let actual_torrent_hash = libmute::utils::get_file_hash(&torrent_path, Some(&store_path))?;
+                libmute::utils::check_hash(&actual_torrent_hash, &torrent_hash, "source.torrent.hash")?;
             }
         }
     }
 
     let origin_base_path = expand_path(config.origin.as_deref().unwrap_or("."));
     let origin_base = origin_base_path.to_string_lossy().to_string();
-    log::debug!("Mapping MUE_ORIGIN_PATH: {origin_base}");
+    log::debug!("Mapping MUTE_ORIGIN_PATH: {origin_base}");
 
-    let res = libmue::utils::resolve_source_origin(
+    let res = libmute::utils::resolve_source_origin(
         &target_path,
         source_type,
         &store_path,
@@ -79,10 +79,10 @@ pub fn run(path: &str, _flake: Option<&str>) -> Result<()> {
     )?;
 
     let mut envs = HashMap::new();
-    envs.insert("MUE_ORIGIN_PATH".to_string(), res.origin_path.clone());
-    log::debug!("Mapping MUE_SOURCE_NAME: {}", res.internal_name);
-    envs.insert("MUE_SOURCE_NAME".to_string(), res.internal_name.clone());
-    envs.insert("MUE_SANITIZED_SOURCE_NAME".to_string(), res.sanitized_name.clone());
+    envs.insert("MUTE_ORIGIN_PATH".to_string(), res.origin_path.clone());
+    log::debug!("Mapping MUTE_SOURCE_NAME: {}", res.internal_name);
+    envs.insert("MUTE_SOURCE_NAME".to_string(), res.internal_name.clone());
+    envs.insert("MUTE_SANITIZED_SOURCE_NAME".to_string(), res.sanitized_name.clone());
 
     if source_type == Some("torrent") {
         if res.is_in_store {
@@ -105,10 +105,10 @@ pub fn run(path: &str, _flake: Option<&str>) -> Result<()> {
 
             let physical_origin = PathBuf::from(&res.origin_path);
             if physical_origin.exists() {
-                let actual_origin_hash = libmue::utils::get_path_hash(&physical_origin, Some(&store_path))?;
+                let actual_origin_hash = libmute::utils::get_path_hash(&physical_origin, Some(&store_path))?;
                 let origin_hash = eval_nix_field::<std::collections::hash_map::RandomState>(&target_path, "origin.hash", None, Some(&store_path))?;
                 log::debug!("Comparing NAR hashes for origin content");
-                libmue::utils::check_hash(&actual_origin_hash, &origin_hash, "origin.hash")?;
+                libmute::utils::check_hash(&actual_origin_hash, &origin_hash, "origin.hash")?;
             } else {
                 anyhow::bail!("Origin path does not exist: {}", physical_origin.display());
             }
@@ -125,14 +125,14 @@ pub fn run(path: &str, _flake: Option<&str>) -> Result<()> {
         };
         log::debug!("Validating cover file: {}", cover_path.display());
         if cover_path.exists() {
-            let actual_cover_hash = libmue::utils::get_file_hash(&cover_path, Some(&store_path))?;
-            libmue::utils::check_hash(&actual_cover_hash, &cover_hash, "cover.hash")?;
+            let actual_cover_hash = libmute::utils::get_file_hash(&cover_path, Some(&store_path))?;
+            libmute::utils::check_hash(&actual_cover_hash, &cover_hash, "cover.hash")?;
         } else {
             anyhow::bail!("Cover file not found at {}", cover_path.display());
         }
     }
 
-    let base_expr = format!("(import ./album.nix {{ mue = (builtins.getFlake \"{}\").lib; }})", libmue::utils::get_mue_flake_uri());
+    let base_expr = format!("(import ./album.nix {{ mute = (builtins.getFlake \"{}\").lib; }})", libmute::utils::get_mute_flake_uri());
     
     let mut build_formats = Vec::new();
     if config.library.as_ref().and_then(|l| l.flac.as_ref()).and_then(|f| f.enable).unwrap_or(false) {
@@ -195,7 +195,7 @@ pub fn run(path: &str, _flake: Option<&str>) -> Result<()> {
             log::warn!("Failed to create source GC root link: {e}");
         }
 
-        envs.insert("MUE_ORIGIN_PATH".to_string(), src_logical_path);
+        envs.insert("MUTE_ORIGIN_PATH".to_string(), src_logical_path);
         
         let seed_cmd = eval_config_field(&target_path, "commands.torrent.seed", Some(&envs), Some(&store_path)).unwrap_or_default();
         if !seed_cmd.is_empty() {
@@ -318,7 +318,7 @@ fn sync_library(target_dir: &Path, config: &AppConfig, format_store_paths: &Hash
 }
 
 fn materialize_library(store_dir: &Path, root: &str, folder_name: &str, store_path: &Path) -> Result<()> {
-    let expanded_root = libmue::utils::expand_path(root);
+    let expanded_root = libmute::utils::expand_path(root);
     if !expanded_root.exists() {
         fs::create_dir_all(&expanded_root)?;
     }

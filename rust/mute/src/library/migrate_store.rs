@@ -1,5 +1,5 @@
 use anyhow::Result;
-use libmue::config::AppConfig;
+use libmute::config::AppConfig;
 use std::fs;
 use std::path::PathBuf;
 use walkdir::WalkDir;
@@ -25,7 +25,7 @@ pub fn run() -> Result<()> {
     }
 
     for dir in target_dirs {
-        let expanded = libmue::utils::expand_path(&dir.to_string_lossy());
+        let expanded = libmute::utils::expand_path(&dir.to_string_lossy());
         if !expanded.exists() { continue; }
         
         for entry in WalkDir::new(&expanded).into_iter().filter_map(Result::ok) {

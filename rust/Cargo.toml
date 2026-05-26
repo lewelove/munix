@@ -1,9 +1,9 @@
 [workspace]
 
 members = [
-    "libmue",
-    "mue",
-    "muex"
+    "libmute",
+    "mute",
+    "mutex"
 ]
 
 resolver = "2"

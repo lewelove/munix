@@ -4,7 +4,7 @@ mod album;
 mod library;
 
 #[derive(Parser)]
-#[command(name = "mue", version = "0.1.0")]
+#[command(name = "mute", version = "0.1.0")]
 struct Cli {
     #[arg(global = true, long)]
     debug: bool,

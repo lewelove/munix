@@ -77,9 +77,9 @@ let
 
 in
 ''
-{ mue }:
+{ mute }:
 
-mue.mkAlbum {
+mute.mkAlbum {
 
   name = "${data.name or ""}";
 

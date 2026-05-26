@@ -35,7 +35,7 @@ pub fn build_globset(tracks_filter: &str) -> Result<globset::GlobSet> {
 pub fn detect_source_type(path: &Path, store: Option<&Path>) -> Result<String> {
     let path_str = path.to_string_lossy();
     let expr = format!(
-        "let res = (import (/. + \"{path_str}\") {{ mue = {{ mkAlbum = x: x; }}; }}); in \
+        "let res = (import (/. + \"{path_str}\") {{ mute = {{ mkAlbum = x: x; }}; }}); in \
          if res ? source then \
              if res.source ? torrent then \"torrent\" \
              else if res.source ? web then \"web\" \
@@ -192,9 +192,9 @@ pub fn check_hash(actual: &str, expected: &str, name: &str) -> Result<()> {
 }
 
 #[must_use] 
-pub fn get_mue_flake_uri() -> String {
+pub fn get_mute_flake_uri() -> String {
     let home = dirs::home_dir().expect("Could not find home directory");
-    let config_dir = home.join(".config/mue");
+    let config_dir = home.join(".config/mute");
     format!("path:{}", config_dir.display())
 }
 
@@ -235,7 +235,7 @@ pub fn sanitize_source_name(name: &str) -> String {
 pub fn eval_nix_field<S: std::hash::BuildHasher>(path: &Path, field_path: &str, envs: Option<&HashMap<String, String, S>>, store: Option<&Path>) -> Result<String> {
     let path_str = path.to_string_lossy();
     let expr = format!(
-        "let res = (import (/. + \"{path_str}\") {{ mue = {{ mkAlbum = x: x; }}; }}); in builtins.toString (res.{field_path} or \"\")"
+        "let res = (import (/. + \"{path_str}\") {{ mute = {{ mkAlbum = x: x; }}; }}); in builtins.toString (res.{field_path} or \"\")"
     );
     log::debug!("Evaluating nix field '{}' from {}", field_path, path.display());
     let mut cmd = Command::new("nix");
@@ -258,9 +258,9 @@ pub fn eval_nix_field<S: std::hash::BuildHasher>(path: &Path, field_path: &str, 
 
 pub fn eval_nix_derivation_field<S: std::hash::BuildHasher>(path: &Path, field_path: &str, envs: Option<&HashMap<String, String, S>>, store: Option<&Path>) -> Result<String> {
     let path_str = path.to_string_lossy();
-    let flake_uri = get_mue_flake_uri();
+    let flake_uri = get_mute_flake_uri();
     let expr = format!(
-        "(import (/. + \"{path_str}\") {{ mue = (builtins.getFlake \"{flake_uri}\").lib; }}).{field_path}"
+        "(import (/. + \"{path_str}\") {{ mute = (builtins.getFlake \"{flake_uri}\").lib; }}).{field_path}"
     );
     log::debug!("Evaluating real derivation field '{}' from {}", field_path, path.display());
     let mut cmd = Command::new("nix");
@@ -282,12 +282,12 @@ pub fn eval_nix_derivation_field<S: std::hash::BuildHasher>(path: &Path, field_p
 }
 
 pub fn eval_config_field<S: std::hash::BuildHasher>(path: &Path, field_path: &str, envs: Option<&HashMap<String, String, S>>, store: Option<&Path>) -> Result<String> {
-    let flake_uri = get_mue_flake_uri();
+    let flake_uri = get_mute_flake_uri();
     let path_str = path.to_string_lossy();
     let expr = format!(
-        "let mue = (builtins.getFlake \"{flake_uri}\").lib; \
-             args = import (/. + \"{path_str}\") {{ mue = mue // {{ mkAlbum = x: x; }}; }}; \
-             config = mue.evalConfig args; \
+        "let mute = (builtins.getFlake \"{flake_uri}\").lib; \
+             args = import (/. + \"{path_str}\") {{ mute = mute // {{ mkAlbum = x: x; }}; }}; \
+             config = mute.evalConfig args; \
          in builtins.toString (config.{field_path} or \"\")"
     );
     log::debug!("Evaluating config field '{}' for album {}", field_path, path.display());

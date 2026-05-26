@@ -3,7 +3,7 @@ use clap::{Parser, Subcommand};
 mod discid;
 
 #[derive(Parser)]
-#[command(name = "muex", version = "0.1.0")]
+#[command(name = "mutex", version = "0.1.0")]
 struct Cli {
     #[arg(global = true, long)]
     debug: bool,

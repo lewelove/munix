@@ -1,6 +1,6 @@
 use anyhow::Result;
-use libmue::utils::{eval_config_field, resolve_album_path, expand_path};
-use libmue::config::AppConfig;
+use libmute::utils::{eval_config_field, resolve_album_path, expand_path};
+use libmute::config::AppConfig;
 use std::collections::HashMap;
 use std::process::Command;
 
@@ -12,7 +12,7 @@ pub fn run(path: &str) -> Result<()> {
     let store_path = config.get_store_path();
     let album_path = resolve_album_path(path)?;
     
-    let source_type_str = libmue::utils::detect_source_type(&album_path, Some(&store_path))?;
+    let source_type_str = libmute::utils::detect_source_type(&album_path, Some(&store_path))?;
     if source_type_str.is_empty() {
         anyhow::bail!("No valid source found in album.nix");
     }
@@ -20,7 +20,7 @@ pub fn run(path: &str) -> Result<()> {
 
     let origin_base_path = expand_path(config.origin.as_deref().unwrap_or("."));
 
-    let res = libmue::utils::resolve_source_origin(
+    let res = libmute::utils::resolve_source_origin(
         &album_path,
         Some(source),
         &store_path,
@@ -34,9 +34,9 @@ pub fn run(path: &str) -> Result<()> {
 
     let mut envs = HashMap::new();
     log::debug!("Using origin path: {}", res.origin_path);
-    envs.insert("MUE_ORIGIN_PATH".to_string(), res.origin_path);
-    envs.insert("MUE_SOURCE_NAME".to_string(), res.internal_name);
-    envs.insert("MUE_SANITIZED_SOURCE_NAME".to_string(), res.sanitized_name);
+    envs.insert("MUTE_ORIGIN_PATH".to_string(), res.origin_path);
+    envs.insert("MUTE_SOURCE_NAME".to_string(), res.internal_name);
+    envs.insert("MUTE_SANITIZED_SOURCE_NAME".to_string(), res.sanitized_name);
 
     let cmd_field = match source {
         "torrent" => "commands.torrent.fetch",

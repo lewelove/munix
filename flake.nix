@@ -1,5 +1,5 @@
 {
-  description = "Mue Development Environment";
+  description = "Mute Development Environment";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -28,15 +28,15 @@
           '';
         };
 
-        mue-bin = pkgs.writeShellApplication {
-          name = "mue";
+        mute-bin = pkgs.writeShellApplication {
+          name = "mute";
           runtimeInputs = [ pkgs.git ];
           text = ''
             ROOT=$(git rev-parse --show-toplevel)
-            BIN="$ROOT/rust/target/release/mue"
+            BIN="$ROOT/rust/target/release/mute"
             
             if [ ! -f "$BIN" ]; then
-              echo "Error: mue binary not found at $BIN."
+              echo "Error: mute binary not found at $BIN."
               echo "Run 'build --release' first."
               exit 1
             fi
@@ -45,15 +45,15 @@
           '';
         };
 
-        muex-bin = pkgs.writeShellApplication {
-          name = "muex";
+        mutex-bin = pkgs.writeShellApplication {
+          name = "mutex";
           runtimeInputs = [ pkgs.git ];
           text = ''
             ROOT=$(git rev-parse --show-toplevel)
-            BIN="$ROOT/rust/target/release/muex"
+            BIN="$ROOT/rust/target/release/mutex"
             
             if [ ! -f "$BIN" ]; then
-              echo "Error: muex binary not found at $BIN."
+              echo "Error: mutex binary not found at $BIN."
               echo "Run 'build --release' first."
               exit 1
             fi
@@ -71,8 +71,8 @@
           rustfmt
           clippy
           build-cli
-          mue-bin
-          muex-bin
+          mute-bin
+          mutex-bin
           nix
           intermodal
         ];
