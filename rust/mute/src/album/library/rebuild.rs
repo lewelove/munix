@@ -17,6 +17,6 @@ pub fn run() -> Result<()> {
         let _ = crate::album::build::run(&path_str, None);
     }
     
-    crate::library::migrate_store::run()?;
+    crate::album::library::migrate_store::run()?;
     Ok(())
 }

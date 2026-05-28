@@ -14,7 +14,7 @@ pub struct SourceResolution {
     pub internal_name: String,
     pub sanitized_name: String,
     pub truncated_hash: String,
-    pub album_name: String,
+    pub entity_name: String,
 }
 
 pub fn build_globset(tracks_filter: &str) -> Result<globset::GlobSet> {
@@ -35,7 +35,7 @@ pub fn build_globset(tracks_filter: &str) -> Result<globset::GlobSet> {
 pub fn detect_source_type(path: &Path, store: Option<&Path>) -> Result<String> {
     let path_str = path.to_string_lossy();
     let expr = format!(
-        "let res = (import (/. + \"{path_str}\") {{ mute = {{ mkAlbum = x: x; }}; }}); in \
+        "let res = (import (/. + \"{path_str}\") {{ mute = {{ mkAlbum = x: x; mkFilm = x: x; }}; }}); in \
          if res ? source then \
              if res.source ? torrent then \"torrent\" \
              else if res.source ? web then \"web\" \
@@ -63,8 +63,9 @@ pub fn resolve_source_origin(
     source_type: Option<&str>,
     store_path: &Path,
     origin_base_path: &Path,
+    media_type: &str,
 ) -> Result<SourceResolution> {
-    let album_name = eval_nix_field::<std::collections::hash_map::RandomState>(target_path, "name", None, Some(store_path)).unwrap_or_default();
+    let entity_name = eval_nix_field::<std::collections::hash_map::RandomState>(target_path, "name", None, Some(store_path)).unwrap_or_default();
     
     let mut source_name_attr = String::new();
     let mut source_hash = String::new();
@@ -96,7 +97,7 @@ pub fn resolve_source_origin(
     } else if !detected_torrent_name.is_empty() {
         detected_torrent_name
     } else {
-        album_name.clone()
+        entity_name.clone()
     };
 
     log::debug!("Resolved internal source name: {internal_name}");
@@ -127,13 +128,13 @@ pub fn resolve_source_origin(
     let actual_origin_path = if is_in_store {
         store_origin_path
     } else if source_type == Some("torrent") {
-        origin_base_path.join("torrent").join(&link_name).to_string_lossy().to_string()
+        origin_base_path.join(source_type.unwrap()).join(media_type).join(&link_name).to_string_lossy().to_string()
     } else {
         let origin_path_nix = eval_nix_field::<std::collections::hash_map::RandomState>(target_path, "origin.path", None, Some(store_path)).unwrap_or_default();
         if !origin_path_nix.is_empty() {
             PathBuf::from(origin_path_nix).to_string_lossy().to_string()
         } else {
-            origin_base_path.join(&album_name).to_string_lossy().to_string()
+            origin_base_path.join(source_type.unwrap_or("web")).join(media_type).join(&link_name).to_string_lossy().to_string()
         }
     };
 
@@ -144,7 +145,7 @@ pub fn resolve_source_origin(
         internal_name,
         sanitized_name: sanitized,
         truncated_hash: truncated,
-        album_name,
+        entity_name,
     })
 }
 
@@ -235,7 +236,7 @@ pub fn sanitize_source_name(name: &str) -> String {
 pub fn eval_nix_field<S: std::hash::BuildHasher>(path: &Path, field_path: &str, envs: Option<&HashMap<String, String, S>>, store: Option<&Path>) -> Result<String> {
     let path_str = path.to_string_lossy();
     let expr = format!(
-        "let res = (import (/. + \"{path_str}\") {{ mute = {{ mkAlbum = x: x; }}; }}); in builtins.toString (res.{field_path} or \"\")"
+        "let res = (import (/. + \"{path_str}\") {{ mute = {{ mkAlbum = x: x; mkFilm = x: x; }}; }}); in builtins.toString (res.{field_path} or \"\")"
     );
     log::debug!("Evaluating nix field '{}' from {}", field_path, path.display());
     let mut cmd = Command::new("nix");
@@ -286,11 +287,11 @@ pub fn eval_config_field<S: std::hash::BuildHasher>(path: &Path, field_path: &st
     let path_str = path.to_string_lossy();
     let expr = format!(
         "let mute = (builtins.getFlake \"{flake_uri}\").lib; \
-             args = import (/. + \"{path_str}\") {{ mute = mute // {{ mkAlbum = x: x; }}; }}; \
+             args = import (/. + \"{path_str}\") {{ mute = mute // {{ mkAlbum = x: x; mkFilm = x: x; }}; }}; \
              config = mute.evalConfig args; \
          in builtins.toString (config.{field_path} or \"\")"
     );
-    log::debug!("Evaluating config field '{}' for album {}", field_path, path.display());
+    log::debug!("Evaluating config field '{}' for asset {}", field_path, path.display());
     let mut cmd = Command::new("nix");
     if let Some(s) = store {
         cmd.args(["--store", s.to_str().unwrap()]);

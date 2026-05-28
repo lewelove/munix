@@ -120,7 +120,7 @@ pub fn run(path_str: &str, tracks_filter: &str, torrent_path: Option<&str>, meta
         let origin_base_path = libmute::utils::expand_path(config.origin.as_deref().unwrap_or("."));
         let source_type = data["source"]["type"].as_str();
 
-        if let Ok(res) = libmute::utils::resolve_source_origin(&album_nix_path, source_type, &store_path, &origin_base_path) {
+        if let Ok(res) = libmute::utils::resolve_source_origin(&album_nix_path, source_type, &store_path, &origin_base_path, "albums") {
             let resolved_origin = PathBuf::from(res.origin_path);
             if resolved_origin.exists() {
                 origin_folder = Some(resolved_origin);

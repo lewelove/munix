@@ -12,7 +12,7 @@ pub fn run(source: Option<&str>, tracks: Option<&str>) {
         let store_path = config.get_store_path();
         let origin_base_path = expand_path(config.origin.as_deref().unwrap_or("."));
 
-        if let Ok(res) = resolve_source_origin(&target_path, source, &store_path, &origin_base_path) {
+        if let Ok(res) = resolve_source_origin(&target_path, source, &store_path, &origin_base_path, "albums") {
             origin_folder = PathBuf::from(res.origin_path);
         }
     }

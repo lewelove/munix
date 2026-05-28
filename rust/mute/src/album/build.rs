@@ -76,6 +76,7 @@ pub fn run(path: &str, _flake: Option<&str>) -> Result<()> {
         source_type,
         &store_path,
         &origin_base_path,
+        "albums"
     )?;
 
     let mut envs = HashMap::new();
@@ -146,7 +147,7 @@ pub fn run(path: &str, _flake: Option<&str>) -> Result<()> {
 
     for fmt in build_formats {
         let fmt_expr = format!("{base_expr}.{fmt}");
-        let result_link = store_path.join("gcroots").join("albums").join(format!("{}-{}-{}", res.album_name, res.truncated_hash, fmt));
+        let result_link = store_path.join("gcroots").join("albums").join(format!("{}-{}-{}", res.entity_name, res.truncated_hash, fmt));
         fs::create_dir_all(result_link.parent().unwrap())?;
 
         log::info!("Building {fmt} derivation via Nix...");
@@ -205,7 +206,7 @@ pub fn run(path: &str, _flake: Option<&str>) -> Result<()> {
         }
     }
 
-    crate::library::migrate_store::run()?;
+    crate::album::library::migrate_store::run()?;
 
     log::info!("Build completed successfully.");
     Ok(())

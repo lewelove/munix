@@ -1,37 +1,37 @@
 use anyhow::Result;
-use libmute::utils::{eval_config_field, resolve_album_path, expand_path};
+use libmute::utils::{eval_config_field, expand_path};
 use libmute::config::AppConfig;
 use std::collections::HashMap;
 use std::process::Command;
+use std::path::PathBuf;
 
 pub fn run(path: &str) -> Result<()> {
-    log::debug!("Starting fetch operation");
+    log::debug!("Starting film fetch operation");
     log::debug!("Target path: {path}");
 
     let config = AppConfig::load();
     let store_path = config.get_store_path();
-    let album_path = resolve_album_path(path)?;
+    let mut target_dir = PathBuf::from(path);
+    if !target_dir.join("film.nix").exists() && target_dir.is_file() {
+        target_dir = target_dir.parent().unwrap_or(&target_dir).to_path_buf();
+    }
+    let film_path = target_dir.join("film.nix");
     
-    let source_type_str = libmute::utils::detect_source_type(&album_path, Some(&store_path))?;
+    let source_type_str = libmute::utils::detect_source_type(&film_path, Some(&store_path))?;
     if source_type_str.is_empty() {
-        anyhow::bail!("No valid source found in album.nix");
+        anyhow::bail!("No valid source found in film.nix");
     }
     let source = source_type_str.as_str();
 
     let origin_base_path = expand_path(config.origin.as_deref().unwrap_or("."));
 
     let res = libmute::utils::resolve_source_origin(
-        &album_path,
+        &film_path,
         Some(source),
         &store_path,
         &origin_base_path,
-        "albums"
+        "films"
     )?;
-
-    if source == "torrent" && res.is_in_store {
-        log::info!("Source is already pinned logically in the Nix store. Skipping fetch.");
-        return Ok(());
-    }
 
     let mut envs = HashMap::new();
     log::debug!("Using origin path: {}", res.origin_path);
@@ -45,7 +45,7 @@ pub fn run(path: &str) -> Result<()> {
         _ => anyhow::bail!("Unknown source: '{source}'. Expected 'torrent' or 'web'."),
     };
 
-    let final_cmd = eval_config_field(&album_path, cmd_field, Some(&envs), Some(&store_path))?;
+    let final_cmd = eval_config_field(&film_path, cmd_field, Some(&envs), Some(&store_path))?;
 
     if final_cmd.is_empty() {
         anyhow::bail!("Command '{cmd_field}' is missing or empty in config.nix");

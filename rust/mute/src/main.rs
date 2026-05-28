@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 
 mod album;
-mod library;
+mod film;
 
 #[derive(Parser)]
 #[command(name = "mute", version = "0.1.0")]
@@ -19,9 +19,9 @@ enum Commands {
         #[command(subcommand)]
         command: AlbumCommands,
     },
-    Library {
+    Film {
         #[command(subcommand)]
-        command: LibraryCommands,
+        command: FilmCommands,
     },
 }
 
@@ -49,15 +49,50 @@ enum AlbumCommands {
         #[arg(long)]
         intermediary: bool,
     },
+    Library {
+        #[command(subcommand)]
+        command: AlbumLibraryCommands,
+    },
 }
 
 #[derive(Subcommand)]
-enum LibraryCommands {
+enum AlbumLibraryCommands {
     Rebuild,
     Init {
         path: String,
     },
     MigrateStore,
+}
+
+#[derive(Subcommand)]
+enum FilmCommands {
+    Build {
+        #[arg(default_value = ".")]
+        path: String,
+    },
+    Fetch {
+        #[arg(default_value = ".")]
+        path: String,
+    },
+    Manifest {
+        #[arg(long)]
+        torrent: Option<String>,
+        #[arg(default_value = ".")]
+        path: String,
+        #[arg(long)]
+        video: Option<String>,
+        #[arg(long)]
+        intermediary: bool,
+    },
+    Library {
+        #[command(subcommand)]
+        command: FilmLibraryCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum FilmLibraryCommands {
+    Rebuild,
 }
 
 fn main() {
@@ -95,26 +130,54 @@ fn main() {
                     std::process::exit(1);
                 }
             }
+            AlbumCommands::Library { command } => match command {
+                AlbumLibraryCommands::Rebuild => {
+                    if let Err(e) = album::library::rebuild::run() {
+                        log::error!("{e}");
+                        std::process::exit(1);
+                    }
+                }
+                AlbumLibraryCommands::Init { path } => {
+                    if let Err(e) = album::library::init::run(&path) {
+                        log::error!("{e}");
+                        std::process::exit(1);
+                    }
+                }
+                AlbumLibraryCommands::MigrateStore => {
+                    if let Err(e) = album::library::migrate_store::run() {
+                        log::error!("{e}");
+                        std::process::exit(1);
+                    }
+                }
+            }
         },
-        Commands::Library { command } => match command {
-            LibraryCommands::Rebuild => {
-                if let Err(e) = library::rebuild::run() {
+        Commands::Film { command } => match command {
+            FilmCommands::Build { path } => {
+                if let Err(e) = film::build::run(&path) {
                     log::error!("{e}");
                     std::process::exit(1);
                 }
             }
-            LibraryCommands::Init { path } => {
-                if let Err(e) = library::init::run(&path) {
+            FilmCommands::Fetch { path } => {
+                if let Err(e) = film::fetch::run(&path) {
                     log::error!("{e}");
                     std::process::exit(1);
                 }
             }
-            LibraryCommands::MigrateStore => {
-                if let Err(e) = library::migrate_store::run() {
+            FilmCommands::Manifest { torrent, path, video, intermediary } => {
+                if let Err(e) = film::manifest::run(&path, video.as_deref(), torrent.as_deref(), intermediary) {
                     log::error!("{e}");
                     std::process::exit(1);
                 }
             }
-        },
+            FilmCommands::Library { command } => match command {
+                FilmLibraryCommands::Rebuild => {
+                    if let Err(e) = film::library::rebuild::run() {
+                        log::error!("{e}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+        }
     }
 }

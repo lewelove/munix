@@ -31,6 +31,7 @@
 
     lib = {
       albumNixTemplate = { data }: import ./album.nix.template.nix { inherit data; lib = pkgs.lib; };
+      filmNixTemplate = { data }: import ./film.nix.template.nix { inherit data; lib = pkgs.lib; };
       metadataTomlTemplate = { data }: import ./metadata.toml.template.nix { inherit data; lib = pkgs.lib; };
 
       evalConfig = albumArgs: let
@@ -117,6 +118,8 @@
           cp track.opus $out/track.opus
         '';
       };
+
+      mkFilm = args: args;
 
       mkAlbum = args@{ 
         name, 

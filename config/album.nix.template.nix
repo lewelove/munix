@@ -19,7 +19,6 @@ let
   renderSource = if data.source.type == "torrent" then
     "  source.torrent = {\n" +
     "    file = ./${get "source.torrent.file" "source.torrent"};\n" +
-    "    name = ${toNixVal (get "source.torrent.name" "")};\n" +
     "    hash = \"${get "source.torrent.hash" "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}\";\n" +
     "  };"
   else
