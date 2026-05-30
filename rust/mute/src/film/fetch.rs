@@ -11,8 +11,8 @@ pub fn run(path: &str) -> Result<()> {
 
     let config = AppConfig::load();
     let store_path = config.get_store_path();
-    let mut target_dir = PathBuf::from(path);
-    if !target_dir.join("film.nix").exists() && target_dir.is_file() {
+    let mut target_dir = std::fs::canonicalize(path).unwrap_or_else(|_| PathBuf::from(path));
+    if target_dir.is_file() && target_dir.file_name().and_then(|s| s.to_str()) == Some("film.nix") {
         target_dir = target_dir.parent().unwrap_or(&target_dir).to_path_buf();
     }
     let film_path = target_dir.join("film.nix");
